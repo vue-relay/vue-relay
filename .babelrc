@@ -1,0 +1,18 @@
+{
+  "presets": [
+    [
+      "env",
+      {
+        "modules": false
+      }
+    ]
+  ],
+  "plugins": [
+    "external-helpers",
+    "transform-object-rest-spread"
+  ],
+  "ignore": [
+    "dist/*.js"
+  ]
+}
+

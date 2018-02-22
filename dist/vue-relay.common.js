@@ -1,5 +1,5 @@
 /**
- * vue-relay v0.0.0
+ * vue-relay v1.5.0
  * (c) 2018 なつき
  * @license BSD-2-Clause
  */
@@ -1062,7 +1062,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
     data: function data() {
       var createFragmentSpecResolver = relay.environment.unstable_internal.createFragmentSpecResolver;
 
-      var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+      var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props);
 
       return {
         state: Object.freeze({
@@ -1078,6 +1078,9 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
         })
       };
     },
+    mounted: function mounted() {
+      this._subscribeToNewResolver();
+    },
     beforeUpdate: function beforeUpdate() {
       var _relay$environment$un = relay.environment.unstable_internal,
           createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
@@ -1091,7 +1094,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
 
       if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$3(prevIDs, nextIDs)) {
         resolver.dispose();
-        resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+        resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props);
 
         this.setState({
           data: resolver.resolve(),
@@ -1122,6 +1125,9 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
         }
       }
     },
+    updated: function updated() {
+      this._subscribeToNewResolver();
+    },
     beforeDestroy: function beforeDestroy() {
       this.state.resolver.dispose();
     },
@@ -1138,6 +1144,19 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
             environment: this.state.relayProp.environment
           }
         });
+      },
+      _subscribeToNewResolver: function _subscribeToNewResolver() {
+        var resolver = this.state.resolver;
+
+
+        resolver.setCallback(this._handleFragmentDataUpdate);
+
+        // External values could change between render and commit.
+        // Check for this case, even though it requires an extra store read.
+        var data = resolver.resolve();
+        if (this.state.data !== data) {
+          this.setState({ data: data });
+        }
       }
     }
   };

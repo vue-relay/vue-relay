@@ -13,8 +13,7 @@ const createContainerWithFragments = function (fragments) {
         relay,
         this.$options.name,
         fragments,
-        this.$props,
-        this._handleFragmentDataUpdate
+        this.$props
       )
 
       return {
@@ -30,6 +29,9 @@ const createContainerWithFragments = function (fragments) {
           resolver
         })
       }
+    },
+    mounted () {
+      this._subscribeToNewResolver()
     },
     beforeUpdate () {
       const {
@@ -52,8 +54,7 @@ const createContainerWithFragments = function (fragments) {
           relay,
           this.$options.name,
           fragments,
-          this.$props,
-          this._handleFragmentDataUpdate
+          this.$props
         )
 
         this.setState({
@@ -85,6 +86,9 @@ const createContainerWithFragments = function (fragments) {
         }
       }
     },
+    updated () {
+      this._subscribeToNewResolver()
+    },
     beforeDestroy () {
       this.state.resolver.dispose()
     },
@@ -100,6 +104,18 @@ const createContainerWithFragments = function (fragments) {
             environment: this.state.relayProp.environment
           }
         })
+      },
+      _subscribeToNewResolver () {
+        const { resolver } = this.state
+
+        resolver.setCallback(this._handleFragmentDataUpdate)
+
+        // External values could change between render and commit.
+        // Check for this case, even though it requires an extra store read.
+        const data = resolver.resolve()
+        if (this.state.data !== data) {
+          this.setState({ data })
+        }
       }
     }
   }

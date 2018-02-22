@@ -4,9 +4,11 @@ A framework for building GraphQL-driven Vue.js applications.
 
 [![npm](https://img.shields.io/npm/v/vue-relay.svg)](https://www.npmjs.com/package/vue-relay)
 
-## Installation and Setup
+## Introduction
 
-### Installation
+### Installation and Setup
+
+#### Installation
 
 Install Vue and Relay using `yarn` or `npm`:
 
@@ -14,7 +16,7 @@ Install Vue and Relay using `yarn` or `npm`:
 yarn add vue vue-relay
 ```
 
-### Set up babel-plugin-relay
+#### Set up babel-plugin-relay
 
 Relay Modern requires a Babel plugin to convert GraphQL to runtime artifacts:
 
@@ -34,7 +36,7 @@ Add `"relay"` to the list of plugins your `.babelrc` file:
 
 Please note that the "relay" plugin should run before other plugins or presets to ensure the `graphql` template literals are correctly transformed. See Babel's [documentation on this topic](https://babeljs.io/docs/plugins/#plugin-preset-ordering).
 
-### Set up relay-compiler
+#### Set up relay-compiler
 
 Relay's ahead-of-time compilation requires the [Relay Compiler](https://facebook.github.io/relay/docs/en/graphql-in-relay.html#relay-compiler.html), which you can install via `yarn` or `npm`:
 
@@ -64,7 +66,7 @@ For more details, check out [Relay Compiler docs](https://facebook.github.io/rel
 
 ## API Reference
 
-#### \<QueryRenderer />
+### \<QueryRenderer />
 
 ``` vue
 <!-- Example.vue -->
@@ -105,7 +107,7 @@ export default {
 </script>
 ```
 
-#### Fragment Container
+### Fragment Container
 
 ``` vue
 <!-- TodoItem.vue -->
@@ -170,7 +172,7 @@ export default {
 </script>
 ```
 
-#### Refetch Container
+### Refetch Container
 
 ``` vue
 <!-- TodoItem.vue -->
@@ -211,7 +213,7 @@ export default {
 </script>
 ```
 
-#### Pagination Container
+### Pagination Container
 
 ``` vue
 <!-- Feed.vue -->
@@ -295,6 +297,17 @@ export default {
 }
 </script>
 ```
+
+### Comparison with `react-relay`
+
+- `QueryRenderer` does not take render function.
+- Container creating functions do not take component as argument. The rest of function signature remains the same.
+
+`vue-relay` replaces them with [scoped slots](https://vuejs.org/v2/guide/components.html#Scoped-Slots) in both cases.
+
+### Other APIs
+
+Other APIs are exactly same as Relay's Public APIs. Please refer to Relay's [documentation](https://facebook.github.io/relay/docs/en/introduction-to-relay.html).
 
 ---
 

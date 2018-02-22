@@ -2,6 +2,66 @@
 
 A framework for building GraphQL-driven Vue.js applications.
 
+[![npm](https://img.shields.io/npm/v/vue-relay.svg)](https://www.npmjs.com/package/vue-relay)
+
+## Installation and Setup
+
+### Installation
+
+Install Vue and Relay using `yarn` or `npm`:
+
+``` sh
+yarn add vue vue-relay
+```
+
+### Set up babel-plugin-relay
+
+Relay Modern requires a Babel plugin to convert GraphQL to runtime artifacts:
+
+``` sh
+yarn add --dev babel-plugin-relay
+```
+
+Add `"relay"` to the list of plugins your `.babelrc` file:
+
+``` json
+{
+  "plugins": [
+    "relay"
+  ]
+}
+```
+
+Please note that the "relay" plugin should run before other plugins or presets to ensure the `graphql` template literals are correctly transformed. See Babel's [documentation on this topic](https://babeljs.io/docs/plugins/#plugin-preset-ordering).
+
+### Set up relay-compiler
+
+Relay's ahead-of-time compilation requires the [Relay Compiler](https://facebook.github.io/relay/docs/en/graphql-in-relay.html#relay-compiler.html), which you can install via `yarn` or `npm`:
+
+``` sh
+yarn add --dev relay-compiler
+```
+
+This installs the bin script `relay-compiler` in your node_modules folder. It's recommended to run this from a `yarn/npm` script by adding a script to your `package.json` file:
+
+``` json
+"scripts": {
+  "relay": "relay-compiler --src ./src --schema ./schema.graphql"
+}
+```
+
+Then, after making edits to your application files, just run the `relay` script to generate new compiled artifacts:
+
+``` sh
+yarn run relay
+```
+
+**Note:** `relay-compiler` does not understand single-file components with a `.vue` extension. You can `export` `graphql` template literals in `.js` files, and then `import` them in `.vue` single-file components.
+
+For more details, check out [Relay Compiler docs](https://facebook.github.io/relay/docs/en/graphql-in-relay.html#relay-compiler).
+
+---
+
 ## API Reference
 
 #### \<QueryRenderer />
@@ -37,7 +97,7 @@ export default {
         }
       `,
       variables: {
-        pageID: '110798995619330' 
+        pageID: '110798995619330'
       }
     }
   }
@@ -53,7 +113,7 @@ export default {
   <fragment-container>
     <template slot-scope="{ relay, item }">
       <div>
-        <input type="checkbox" :checked="item.isComplete}"></input>
+        <input type="checkbox" :checked="item.isComplete">
         <p>{{ item.text }}</p>
       </div>
     </template>
@@ -84,7 +144,7 @@ export default {
     <template slot-scope="{ relay, list }">
       <div>
         <h3>{{ list.title }}</h3>
-        <todo-item v-for="item in list.todoItems" :item="item"></todo-item>
+        <todo-item v-for="(item, index) in list.todoItems" :item="item" :key="index"></todo-item>
       </div>
     </template>
   </fragment-container>
@@ -96,6 +156,7 @@ import TodoItem from './TodoItem'
 
 export default {
   components: {
+    TodoItem,
     FragmentContainer: createFragmentContainer(graphql`
       fragment TodoList_list on TodoList {
         title
@@ -117,7 +178,7 @@ export default {
   <refetch-container>
     <template slot-scope="{ relay, item }">
       <div>
-        <input type="checkbox" :checked="item.isComplete}"></input>
+        <input type="checkbox" :checked="item.isComplete">
         <p>{{ item.text }}</p>
         <button @click="relay.refetch({ itemId: item.id }, null, () => { console.log('Refetch done') }, { force: true })"></button>
       </div>
@@ -137,7 +198,7 @@ export default {
         isComplete
       }
     `, graphql`
-      # Refetch query to be fetched upon calling `refetch`.
+      # Refetch query to be fetched upon calling 'refetch()'.
       # Notice that we re-use our fragment and the shape of this query matches our fragment spec.
       query TodoItemRefetchQuery($itemID: ID!) {
         item: node(id: $itemID) {
@@ -158,8 +219,8 @@ export default {
   <pagination-container>
     <template slot-scope="{ relay, user }">
       <div>
-        <story v-for="story in user.feed.edges" :story="edge.node" :key="edge.node.id"></story>
-        <button @click="relay.loadMore()">Load More</button>
+        <story v-for="edge in user.feed.edges" :story="edge.node" :key="edge.node.id"></story>
+        <button @click="relay.loadMore(10, error => { console.log(error) })">Load More</button>
       </div>
     </template>
   </pagination-container>
@@ -196,17 +257,17 @@ export default {
       }
     `, {
       direction: 'forward',
-      getConnectionFromProps(props) {
+      getConnectionFromProps (props) {
         return props.user && props.user.feed
       },
       // This is also the default implementation of `getFragmentVariables` if it isn't provided.
-      getFragmentVariables(prevVars, totalCount) {
+      getFragmentVariables (prevVars, totalCount) {
         return {
           ...prevVars,
           count: totalCount
         }
       },
-      getVariables(props, {count, cursor}, fragmentVariables) {
+      getVariables (props, { count, cursor }, fragmentVariables) {
         return {
           count,
           cursor,
@@ -234,6 +295,8 @@ export default {
 }
 </script>
 ```
+
+---
 
 ## License
 

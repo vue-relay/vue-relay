@@ -64,29 +64,33 @@ var _extends = Object.assign || function (target) {
 
 var invariant = require('fbjs/lib/invariant');
 
-var NETWORK_ONLY = 'NETWORK_ONLY';
-var STORE_THEN_NETWORK = 'STORE_THEN_NETWORK';
-
-var DataFromEnum = {
-  NETWORK_ONLY: NETWORK_ONLY,
-  STORE_THEN_NETWORK: STORE_THEN_NETWORK
-};
-
 var VueRelayQueryFetcher = function () {
   function VueRelayQueryFetcher() {
     classCallCheck(this, VueRelayQueryFetcher);
 
+    // this._fetchOptions
+    // this._pendingRequest
+    // this._rootSubscription
     this._selectionReferences = [];
+    // this._snapshot
+    // this._cacheSelectionReference
   }
 
   createClass(VueRelayQueryFetcher, [{
+    key: 'lookupInStore',
+    value: function lookupInStore(environment, operation) {
+      if (environment.check(operation.root)) {
+        this._retainCachedOperation(environment, operation);
+        return environment.lookup(operation.fragment);
+      }
+      return null;
+    }
+  }, {
     key: 'fetch',
     value: function fetch(fetchOptions) {
       var _this = this;
 
       var cacheConfig = fetchOptions.cacheConfig,
-          _fetchOptions$dataFro = fetchOptions.dataFrom,
-          dataFrom = _fetchOptions$dataFro === undefined ? NETWORK_ONLY : _fetchOptions$dataFro,
           environment = fetchOptions.environment,
           onDataChange = fetchOptions.onDataChange,
           operation = fetchOptions.operation;
@@ -99,22 +103,12 @@ var VueRelayQueryFetcher = function () {
       this._disposeRequest();
       this._fetchOptions = fetchOptions;
 
-      // Check if we can fulfill this query with data already available in memory,
-      // and immediatly return data if so
-      if (dataFrom === STORE_THEN_NETWORK && environment.check(operation.root)) {
-        this._cacheReference = environment.retain(operation.root);
-        // Don't notify the first result because it will be returned synchronously
-        this._onQueryDataAvailable({ notifyFirstResult: false });
-      }
-
       var request = environment.execute({ operation: operation, cacheConfig: cacheConfig }).finally(function () {
         _this._pendingRequest = null;
-        _this._disposeCacheReference();
       }).subscribe({
         next: function next(payload) {
           var operationForPayload = createOperationSelector(operation.node, payload.variables, payload.operation);
           nextReferences.push(environment.retain(operationForPayload.root));
-          _this._disposeCacheReference();
 
           // Only notify of the first result if `next` is being called **asynchronously**
           // (i.e. after `fetch` has returned).
@@ -169,18 +163,9 @@ var VueRelayQueryFetcher = function () {
       this._disposeSelectionReferences();
     }
   }, {
-    key: '_disposeCacheReference',
-    value: function _disposeCacheReference() {
-      if (this._cacheReference) {
-        this._cacheReference.dispose();
-        this._cacheReference = null;
-      }
-    }
-  }, {
     key: '_disposeRequest',
     value: function _disposeRequest() {
       this._snapshot = null;
-      this._disposeCacheReference();
 
       // order is important, dispose of pendingFetch before selectionReferences
       if (this._pendingRequest) {
@@ -192,8 +177,22 @@ var VueRelayQueryFetcher = function () {
       }
     }
   }, {
+    key: '_retainCachedOperation',
+    value: function _retainCachedOperation(environment, operation) {
+      this._disposeCacheSelectionReference();
+      this._cacheSelectionReference = environment.retain(operation.root);
+    }
+  }, {
+    key: '_disposeCacheSelectionReference',
+    value: function _disposeCacheSelectionReference() {
+      this._disposeCacheSelectionReference();
+      this._cacheSelectionReference && this._cacheSelectionReference.dispose();
+      this._cacheSelectionReference = null;
+    }
+  }, {
     key: '_disposeSelectionReferences',
     value: function _disposeSelectionReferences() {
+      this._disposeCacheSelectionReference();
       this._selectionReferences.forEach(function (r) {
         return r.dispose();
       });
@@ -232,9 +231,8 @@ var VueRelayQueryFetcher = function () {
   return VueRelayQueryFetcher;
 }();
 
-VueRelayQueryFetcher.DataFrom = DataFromEnum;
-
 var areEqual = require('fbjs/lib/areEqual');
+var STORE_THEN_NETWORK = 'STORE_THEN_NETWORK';
 
 var getLoadingRenderProps = function getLoadingRenderProps() {
   return {
@@ -286,13 +284,16 @@ var fetchQueryAndComputeStateFromProps = function fetchQueryAndComputeStateFromP
     var operation = createOperationSelector(request, variables);
 
     try {
-      var snapshot = queryFetcher.fetch({
+      var storeSnapshot = props.dataFrom === STORE_THEN_NETWORK ? queryFetcher.lookupInStore(genericEnvironment, operation) : null;
+      var querySnapshot = queryFetcher.fetch({
         cacheConfig: props.cacheConfig,
         dataFrom: props.dataFrom,
         environment: genericEnvironment,
         onDataChange: retryCallbacks.handleDataChange,
         operation: operation
       });
+      // Use network data first, since it may be fresher
+      var snapshot = querySnapshot || storeSnapshot;
       if (!snapshot) {
         return {
           relayContextEnvironment: environment,

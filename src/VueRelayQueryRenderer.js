@@ -2,6 +2,14 @@ import VueRelayQueryFetcher from './VueRelayQueryFetcher'
 
 const areEqual = require('fbjs/lib/areEqual')
 
+const NETWORK_ONLY = 'NETWORK_ONLY'
+const STORE_THEN_NETWORK = 'STORE_THEN_NETWORK'
+// eslint-disable-next-line no-unused-vars
+const DataFromEnum = {
+  NETWORK_ONLY,
+  STORE_THEN_NETWORK
+}
+
 const getLoadingRenderProps = function () {
   return {
     error: null,
@@ -49,13 +57,19 @@ const fetchQueryAndComputeStateFromProps = function (props, queryFetcher, retryC
     const operation = createOperationSelector(request, variables)
 
     try {
-      const snapshot = queryFetcher.fetch({
+      const storeSnapshot =
+        props.dataFrom === STORE_THEN_NETWORK
+          ? queryFetcher.lookupInStore(genericEnvironment, operation)
+          : null
+      const querySnapshot = queryFetcher.fetch({
         cacheConfig: props.cacheConfig,
         dataFrom: props.dataFrom,
         environment: genericEnvironment,
         onDataChange: retryCallbacks.handleDataChange,
         operation
       })
+      // Use network data first, since it may be fresher
+      const snapshot = querySnapshot || storeSnapshot
       if (!snapshot) {
         return {
           relayContextEnvironment: environment,

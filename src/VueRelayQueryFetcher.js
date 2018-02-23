@@ -1,26 +1,25 @@
 const invariant = require('fbjs/lib/invariant')
 
-const NETWORK_ONLY = 'NETWORK_ONLY'
-const STORE_THEN_NETWORK = 'STORE_THEN_NETWORK'
-
-const DataFromEnum = {
-  NETWORK_ONLY,
-  STORE_THEN_NETWORK
-}
-
-const VueRelayQueryFetcher = class VueRelayQueryFetcher {
+export default class VueRelayQueryFetcher {
   constructor () {
+    // this._fetchOptions
+    // this._pendingRequest
+    // this._rootSubscription
     this._selectionReferences = []
+    // this._snapshot
+    // this._cacheSelectionReference
+  }
+
+  lookupInStore (environment, operation) {
+    if (environment.check(operation.root)) {
+      this._retainCachedOperation(environment, operation)
+      return environment.lookup(operation.fragment)
+    }
+    return null
   }
 
   fetch (fetchOptions) {
-    const {
-      cacheConfig,
-      dataFrom = NETWORK_ONLY,
-      environment,
-      onDataChange,
-      operation
-    } = fetchOptions
+    const { cacheConfig, environment, onDataChange, operation } = fetchOptions
 
     const { createOperationSelector } = environment.unstable_internal
     const nextReferences = []
@@ -30,19 +29,10 @@ const VueRelayQueryFetcher = class VueRelayQueryFetcher {
     this._disposeRequest()
     this._fetchOptions = fetchOptions
 
-    // Check if we can fulfill this query with data already available in memory,
-    // and immediatly return data if so
-    if (dataFrom === STORE_THEN_NETWORK && environment.check(operation.root)) {
-      this._cacheReference = environment.retain(operation.root)
-      // Don't notify the first result because it will be returned synchronously
-      this._onQueryDataAvailable({ notifyFirstResult: false })
-    }
-
     const request = environment
       .execute({ operation, cacheConfig })
       .finally(() => {
         this._pendingRequest = null
-        this._disposeCacheReference()
       })
       .subscribe({
         next: payload => {
@@ -52,7 +42,6 @@ const VueRelayQueryFetcher = class VueRelayQueryFetcher {
             payload.operation
           )
           nextReferences.push(environment.retain(operationForPayload.root))
-          this._disposeCacheReference()
 
           // Only notify of the first result if `next` is being called **asynchronously**
           // (i.e. after `fetch` has returned).
@@ -112,16 +101,8 @@ const VueRelayQueryFetcher = class VueRelayQueryFetcher {
     this._disposeSelectionReferences()
   }
 
-  _disposeCacheReference () {
-    if (this._cacheReference) {
-      this._cacheReference.dispose()
-      this._cacheReference = null
-    }
-  }
-
   _disposeRequest () {
     this._snapshot = null
-    this._disposeCacheReference()
 
     // order is important, dispose of pendingFetch before selectionReferences
     if (this._pendingRequest) {
@@ -133,7 +114,19 @@ const VueRelayQueryFetcher = class VueRelayQueryFetcher {
     }
   }
 
+  _retainCachedOperation (environment, operation) {
+    this._disposeCacheSelectionReference()
+    this._cacheSelectionReference = environment.retain(operation.root)
+  }
+
+  _disposeCacheSelectionReference () {
+    this._disposeCacheSelectionReference()
+    this._cacheSelectionReference && this._cacheSelectionReference.dispose()
+    this._cacheSelectionReference = null
+  }
+
   _disposeSelectionReferences () {
+    this._disposeCacheSelectionReference()
     this._selectionReferences.forEach(r => r.dispose())
     this._selectionReferences = []
   }
@@ -163,7 +156,3 @@ const VueRelayQueryFetcher = class VueRelayQueryFetcher {
     }
   }
 }
-
-VueRelayQueryFetcher.DataFrom = DataFromEnum
-
-export default VueRelayQueryFetcher

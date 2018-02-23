@@ -427,7 +427,7 @@ var QueryRenderer = {
 
   methods: {
     setState: function setState(state) {
-      this.state = Object.freeze(Object.assign({}, this.state, state));
+      this.state = Object.freeze(_extends({}, this.state, state));
     }
   }
 };
@@ -475,7 +475,9 @@ var buildVueRelayContainer = function buildVueRelayContainer(fragmentSpec, creat
               props: {
                 include: []
               }
-            }, [context.$scopedSlots.default(Object.assign({ relay: _this.state.relayProp }, _this.state.data))]);
+            }, [context.$scopedSlots.default(_extends({}, _this.state.data, {
+              relay: _this.state.relayProp
+            }))]);
           };
           if (this.context) {
             return h({
@@ -576,7 +578,7 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
 
     methods: {
       setState: function setState(state) {
-        this.state = Object.freeze(Object.assign({}, this.state, state));
+        this.state = Object.freeze(_extends({}, this.state, state));
       },
       _buildRelayProp: function _buildRelayProp(relay) {
         return {
@@ -834,7 +836,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
 
     methods: {
       setState: function setState(state) {
-        this.state = Object.freeze(Object.assign({}, this.state, state));
+        this.state = Object.freeze(_extends({}, this.state, state));
       },
       _buildRelayProp: function _buildRelayProp(relay) {
         return {
@@ -1133,7 +1135,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
 
     methods: {
       setState: function setState(state) {
-        this.state = Object.freeze(Object.assign({}, this.state, state));
+        this.state = Object.freeze(_extends({}, this.state, state));
       },
       _handleFragmentDataUpdate: function _handleFragmentDataUpdate() {
         this.setState({

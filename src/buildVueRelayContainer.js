@@ -34,7 +34,10 @@ const buildVueRelayContainer = function (fragmentSpec, createContainerWithFragme
                 include: []
               }
             }, [
-              context.$scopedSlots.default(Object.assign({ relay: this.state.relayProp }, this.state.data))
+              context.$scopedSlots.default({
+                ...this.state.data,
+                relay: this.state.relayProp
+              })
             ])
           }
           if (this.context) {

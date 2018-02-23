@@ -214,7 +214,10 @@ export default {
   },
   methods: {
     setState (state) {
-      this.state = Object.freeze(Object.assign({}, this.state, state))
+      this.state = Object.freeze({
+        ...this.state,
+        ...state
+      })
     }
   }
 }

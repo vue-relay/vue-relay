@@ -68,6 +68,20 @@ For more details, check out [Relay Compiler docs](https://facebook.github.io/rel
 
 ### \<QueryRenderer />
 
+#### Props
+
+- `environment`: The [Relay Environment](https://facebook.github.io/relay/docs/en/relay-environment.html)
+- `query`: The graphql tagged query. **Note:** To [enable compatibility](https://facebook.github.io/relay/docs/en/relay-compat.html) mode, relay-compiler enforces the query to be named as `<FileName>Query`. Optional, if not provided, an empty props object is passed to the render callback.
+- `variables`: Object containing set of variables to pass to the GraphQL query, i.e. a mapping from variable name to value. **Note:** If a new set of variables is passed, the QueryRenderer will re-fetch the query.
+
+#### Scoped Slot Props
+
+- `props`: Object containing data obtained from the query; the shape of this object will match the shape of the query. If this object is not defined, it means that the data is still being fetched.
+- `error`: Error will be defined if an error has occurred while fetching the query.
+- `retry`: Reload the data. It is null if `query` was not provided.
+
+#### Example
+
 ``` vue
 <!-- Example.vue -->
 <template>
@@ -109,193 +123,65 @@ export default {
 
 ### Fragment Container
 
-``` vue
-<!-- TodoItem.vue -->
-<template>
-  <fragment-container>
-    <template slot-scope="{ relay, item }">
-      <div>
-        <input type="checkbox" :checked="item.isComplete">
-        <p>{{ item.text }}</p>
-      </div>
-    </template>
-  </fragment-container>
-</template>
+`createFragmentContainer(fragmentSpec)`
 
-<script>
-import { createFragmentContainer, graphql } from 'vue-relay'
+#### Props
 
-export default {
-  name: 'todo-item',
-  components: {
-    FragmentContainer: createFragmentContainer(graphql`
-      fragment TodoItem_item on Todo {
-        text
-        isComplete
-      }
-    `)
-  }
+- fragments as specified by the fragmentSpec
+
+#### Scoped Slot Props
+
+``` javascript
+{
+  relay: {
+    environment,
+  },
+  // Additional props as specified by the fragmentSpec
 }
-</script>
 ```
 
-``` vue
-<!-- TodoList.vue -->
-<template>
-  <fragment-container>
-    <template slot-scope="{ relay, list }">
-      <div>
-        <h3>{{ list.title }}</h3>
-        <todo-item v-for="(item, index) in list.todoItems" :item="item" :key="index"></todo-item>
-      </div>
-    </template>
-  </fragment-container>
-</template>
-
-<script>
-import { createFragmentContainer, graphql } from 'vue-relay'
-import TodoItem from './TodoItem'
-
-export default {
-  components: {
-    TodoItem,
-    FragmentContainer: createFragmentContainer(graphql`
-      fragment TodoList_list on TodoList {
-        title
-        todoItems {
-          ...TodoItem_item
-        }
-      }
-    `)
-  }
-}
-</script>
-```
 
 ### Refetch Container
 
-``` vue
-<!-- TodoItem.vue -->
-<template>
-  <refetch-container>
-    <template slot-scope="{ relay, item }">
-      <div>
-        <input type="checkbox" :checked="item.isComplete">
-        <p>{{ item.text }}</p>
-        <button @click="relay.refetch({ itemId: item.id }, null, () => { console.log('Refetch done') }, { force: true })"></button>
-      </div>
-    </template>
-  </refetch-container>
-</template>
+#### `createRefetchContainer(fragmentSpec, refetchQuery)`
 
-<script>
-import { createRefetchContainer, graphql } from 'vue-relay'
+#### Props
 
-export default {
-  name: 'todo-item',
-  components: {
-    RefetchContainer: createRefetchContainer(graphql`
-      fragment TodoItem_item on Todo {
-        text
-        isComplete
-      }
-    `, graphql`
-      # Refetch query to be fetched upon calling 'refetch()'.
-      # Notice that we re-use our fragment and the shape of this query matches our fragment spec.
-      query TodoItemRefetchQuery($itemID: ID!) {
-        item: node(id: $itemID) {
-          ...TodoItem_item
-        }
-      }
-    `)
-  }
+- fragments as specified by the fragmentSpec
+
+#### Scoped Slot Props
+
+``` javascript
+{
+  relay: {
+    environment,
+    refetch(),
+  },
+  // Additional props as specified by the fragmentSpec
 }
-</script>
 ```
+
+#### `createPaginationContainer(fragmentSpec, connectionConfig)`
 
 ### Pagination Container
 
-``` vue
-<!-- Feed.vue -->
-<template>
-  <pagination-container>
-    <template slot-scope="{ relay, user }">
-      <div>
-        <story v-for="edge in user.feed.edges" :story="edge.node" :key="edge.node.id"></story>
-        <button @click="relay.loadMore(10, error => { console.log(error) })">Load More</button>
-      </div>
-    </template>
-  </pagination-container>
-</template>
+#### Props
 
-<script>
-import { createPaginationContainer, graphql } from 'vue-relay'
-import Story from './Story'
+- fragments as specified by the fragmentSpec
 
-export default {
-  name: 'feed',
-  components: {
-    Story,
-    PaginationContainer: createPaginationContainer(graphql`
-      fragment Feed_user on User
-        @argumentDefinitions(
-          count: {type: "Int", defaultValue: 10}
-          cursor: {type: "ID"}
-          orderby: {type: "[FriendsOrdering]", defaultValue: [DATE_ADDED]}
-        ) {
-          feed(
-            first: $count
-            after: $cursor
-            orderby: $orderBy # Non-pagination variables
-          ) @connection(key: "Feed_feed") {
-            edges {
-              node {
-                id
-                ...Story_story
-              }
-            }
-          }
-        }
-      }
-    `, {
-      direction: 'forward',
-      getConnectionFromProps (props) {
-        return props.user && props.user.feed
-      },
-      // This is also the default implementation of `getFragmentVariables` if it isn't provided.
-      getFragmentVariables (prevVars, totalCount) {
-        return {
-          ...prevVars,
-          count: totalCount
-        }
-      },
-      getVariables (props, { count, cursor }, fragmentVariables) {
-        return {
-          count,
-          cursor,
-          orderBy: fragmentVariables.orderBy,
-          // userID isn't specified as an @argument for the fragment, but it should be a variable available for the fragment under the query root.
-          userID: fragmentVariables.userID
-        }
-      },
-      query: graphql`
-        # Pagination query to be fetched upon calling loadMore().
-        # Notice that we re-use our fragment, and the shape of this query matches our fragment spec.
-        query FeedPaginationQuery(
-          $count: Int!
-          $cursor: ID
-          $orderBy: [FriendsOrdering]!
-          $userID: ID!
-        ) {
-          user: node(id: $userID) {
-            ...Feed_user @arguments(count: $count, cursor: $cursor, orderBy: $orderBy)
-          }
-        }
-      `
-    })
-  }
+#### Scoped Slot Props
+
+``` javascript
+{
+  relay: {
+    environment,
+    hasMore(),
+    isLoading(),
+    loadMore(),
+    refetchConnection()
+  },
+  // Additional props as specified by the fragmentSpec
 }
-</script>
 ```
 
 ### Comparison with `react-relay`

@@ -197,6 +197,20 @@ Other APIs are exactly same as Relay's Public APIs. Please refer to Relay's [doc
 
 ---
 
+## Example
+
+The [vue-relay-examples](https://github.com/ntkme/vue-relay-examples) repository contains an implementation of [TodoMVC](http://todomvc.com/). To try it out:
+
+``` sh
+git clone https://github.com/ntkme/vue-relay-examples.git
+cd vue-relay-examples/todo
+npm install
+npm run build
+npm start
+```
+
+---
+
 ## License
 
 vue-relay is [BSD-2-Clause licensed](LICENSE).

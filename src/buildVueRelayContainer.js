@@ -13,7 +13,7 @@ const assertRelayContext = function (relay) {
   return (relay)
 }
 
-const buildVueRelayContainer = function (fragmentSpec, createContainerWithFragments) {
+const buildVueRelayContainer = function (component, fragmentSpec, createContainerWithFragments) {
   return {
     name: 'relay-context-consumer',
     inject: ['relay'],
@@ -29,6 +29,14 @@ const buildVueRelayContainer = function (fragmentSpec, createContainerWithFragme
         props: Object.keys(fragments),
         render (h) {
           const render = (h) => {
+            if (component != null) {
+              return h(component, {
+                props: {
+                  ...this.state.data,
+                  relay: this.state.relayProp
+                }
+              })
+            }
             return h('keep-alive', {
               props: {
                 include: []

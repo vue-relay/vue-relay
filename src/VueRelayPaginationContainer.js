@@ -1,8 +1,8 @@
 import buildVueRelayContainer from './buildVueRelayContainer'
 
+const areEqual = require('fbjs/lib/areEqual')
 const invariant = require('fbjs/lib/invariant')
 const warning = require('fbjs/lib/warning')
-const areEqual = require('fbjs/lib/areEqual')
 
 const {
   ConnectionInterface,
@@ -496,8 +496,19 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
   }
 }
 
-const createPaginationContainer = function (fragmentSpec, connectionConfig) {
-  return buildVueRelayContainer(fragmentSpec, function (fragments) {
+const createPaginationContainer = function () {
+  invariant(
+    arguments.length === 2 || arguments.length === 3,
+    'createPaginationContainer: Expected `arguments.length` to be 2 or 3, got `%s`.',
+    arguments
+  )
+  if (arguments.length === 2) {
+    [].unshift.call(arguments, null)
+  }
+
+  const [component, fragmentSpec, connectionConfig] = arguments
+
+  return buildVueRelayContainer(component, fragmentSpec, function (fragments) {
     return createContainerWithFragments.call(this, fragments, connectionConfig)
   })
 }

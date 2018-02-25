@@ -120,7 +120,6 @@ export default class VueRelayQueryFetcher {
   }
 
   _disposeCacheSelectionReference () {
-    this._disposeCacheSelectionReference()
     this._cacheSelectionReference && this._cacheSelectionReference.dispose()
     this._cacheSelectionReference = null
   }

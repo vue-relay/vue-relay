@@ -26,6 +26,7 @@
     "dist"
   ],
   "scripts": {
+    "lint": "eslint --ext .js,.vue src",
     "build": "rollup -c rollup.config.js"
   },
   "dependencies": {

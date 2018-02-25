@@ -187,7 +187,6 @@ var VueRelayQueryFetcher = function () {
   }, {
     key: '_disposeCacheSelectionReference',
     value: function _disposeCacheSelectionReference() {
-      this._disposeCacheSelectionReference();
       this._cacheSelectionReference && this._cacheSelectionReference.dispose();
       this._cacheSelectionReference = null;
     }
@@ -454,7 +453,7 @@ var assertRelayContext = function assertRelayContext(relay) {
   return relay;
 };
 
-var buildVueRelayContainer = function buildVueRelayContainer(fragmentSpec, createContainerWithFragments) {
+var buildVueRelayContainer = function buildVueRelayContainer(component, fragmentSpec, createContainerWithFragments) {
   return {
     name: 'relay-context-consumer',
     inject: ['relay'],
@@ -473,6 +472,13 @@ var buildVueRelayContainer = function buildVueRelayContainer(fragmentSpec, creat
           var _this = this;
 
           var render = function render(h) {
+            if (component != null) {
+              return h(component, {
+                props: _extends({}, _this.state.data, {
+                  relay: _this.state.relayProp
+                })
+              });
+            }
             return h('keep-alive', {
               props: {
                 include: []
@@ -499,11 +505,12 @@ var buildVueRelayContainer = function buildVueRelayContainer(fragmentSpec, creat
   };
 };
 
+var areEqual$1 = require('fbjs/lib/areEqual');
+var invariant$2 = require('fbjs/lib/invariant');
+
 var _require = require('relay-runtime'),
     RelayConcreteNode = _require.RelayConcreteNode,
     Observable = _require.Observable;
-
-var areEqual$1 = require('fbjs/lib/areEqual');
 
 var createContainerWithFragments = function createContainerWithFragments(fragments, taggedNode) {
   var relay = this.relay;
@@ -679,15 +686,25 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
   };
 };
 
-var createRefetchContainer = function createRefetchContainer(fragmentSpec, taggedNode) {
-  return buildVueRelayContainer(fragmentSpec, function (fragments) {
+var createRefetchContainer = function createRefetchContainer() {
+  invariant$2(arguments.length === 2 || arguments.length === 3, 'createRefetchContainer: Expected `arguments.length` to be 2 or 3, got `%s`.', arguments);
+  if (arguments.length === 2) {
+    [].unshift.call(arguments, null);
+  }
+
+  var _arguments = Array.prototype.slice.call(arguments),
+      component = _arguments[0],
+      fragmentSpec = _arguments[1],
+      taggedNode = _arguments[2];
+
+  return buildVueRelayContainer(component, fragmentSpec, function (fragments) {
     return createContainerWithFragments.call(this, fragments, taggedNode);
   });
 };
 
-var invariant$2 = require('fbjs/lib/invariant');
-var warning = require('fbjs/lib/warning');
 var areEqual$2 = require('fbjs/lib/areEqual');
+var invariant$3 = require('fbjs/lib/invariant');
+var warning = require('fbjs/lib/warning');
 
 var _require$1 = require('relay-runtime'),
     ConnectionInterface = _require$1.ConnectionInterface,
@@ -698,7 +715,7 @@ var FORWARD = 'forward';
 
 var createGetConnectionFromProps = function createGetConnectionFromProps(metadata) {
   var path = metadata.path;
-  invariant$2(path, 'RelayPaginationContainer: Unable to synthesize a ' + 'getConnectionFromProps function.');
+  invariant$3(path, 'RelayPaginationContainer: Unable to synthesize a ' + 'getConnectionFromProps function.');
   return function (props) {
     var data = props[metadata.fragmentName];
     for (var i = 0; i < path.length; i++) {
@@ -713,7 +730,7 @@ var createGetConnectionFromProps = function createGetConnectionFromProps(metadat
 
 var createGetFragmentVariables = function createGetFragmentVariables(metadata) {
   var countVariable = metadata.count;
-  invariant$2(countVariable, 'RelayPaginationContainer: Unable to synthesize a ' + 'getFragmentVariables function.');
+  invariant$3(countVariable, 'RelayPaginationContainer: Unable to synthesize a ' + 'getFragmentVariables function.');
   return function (prevVars, totalCount) {
     return _extends({}, prevVars, defineProperty({}, countVariable, totalCount));
   };
@@ -732,14 +749,14 @@ var findConnectionMetadata = function findConnectionMetadata(fragments) {
       isRelayModern = true;
     }
     if (connectionMetadata) {
-      invariant$2(connectionMetadata.length === 1, 'RelayPaginationContainer: Only a single @connection is ' + 'supported, `%s` has %s.', fragmentName, connectionMetadata.length);
-      invariant$2(!foundConnectionMetadata, 'RelayPaginationContainer: Only a single fragment with ' + '@connection is supported.');
+      invariant$3(connectionMetadata.length === 1, 'RelayPaginationContainer: Only a single @connection is ' + 'supported, `%s` has %s.', fragmentName, connectionMetadata.length);
+      invariant$3(!foundConnectionMetadata, 'RelayPaginationContainer: Only a single fragment with ' + '@connection is supported.');
       foundConnectionMetadata = _extends({}, connectionMetadata[0], {
         fragmentName: fragmentName
       });
     }
   }
-  invariant$2(!isRelayModern || foundConnectionMetadata !== null, 'RelayPaginationContainer: A @connection directive must be present.');
+  invariant$3(!isRelayModern || foundConnectionMetadata !== null, 'RelayPaginationContainer: A @connection directive must be present.');
   return foundConnectionMetadata || {};
 };
 
@@ -761,7 +778,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
   var getConnectionFromProps = connectionConfig.getConnectionFromProps || createGetConnectionFromProps(metadata);
 
   var direction = connectionConfig.direction || metadata.direction;
-  invariant$2(direction, 'RelayPaginationContainer: Unable to infer direction of the ' + 'connection, possibly because both first and last are provided.');
+  invariant$3(direction, 'RelayPaginationContainer: Unable to infer direction of the ' + 'connection, possibly because both first and last are provided.');
 
   var getFragmentVariables = connectionConfig.getFragmentVariables || createGetFragmentVariables(metadata);
 
@@ -870,14 +887,14 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
             END_CURSOR = _ConnectionInterface$.END_CURSOR,
             START_CURSOR = _ConnectionInterface$.START_CURSOR;
 
-        invariant$2((typeof connectionData === 'undefined' ? 'undefined' : _typeof(connectionData)) === 'object', 'RelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' + 'to return `null` or a plain object with %s and %s properties, got `%s`.', this.$options.name, EDGES, PAGE_INFO, connectionData);
+        invariant$3((typeof connectionData === 'undefined' ? 'undefined' : _typeof(connectionData)) === 'object', 'RelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' + 'to return `null` or a plain object with %s and %s properties, got `%s`.', this.$options.name, EDGES, PAGE_INFO, connectionData);
         var edges = connectionData[EDGES];
         var pageInfo = connectionData[PAGE_INFO];
         if (edges == null || pageInfo == null) {
           return null;
         }
-        invariant$2(Array.isArray(edges), 'RelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' + 'to return an object with %s: Array, got `%s`.', this.$options.name, EDGES, edges);
-        invariant$2((typeof pageInfo === 'undefined' ? 'undefined' : _typeof(pageInfo)) === 'object', 'RelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' + 'to return an object with %s: Object, got `%s`.', this.$options.name, PAGE_INFO, pageInfo);
+        invariant$3(Array.isArray(edges), 'RelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' + 'to return an object with %s: Array, got `%s`.', this.$options.name, EDGES, edges);
+        invariant$3((typeof pageInfo === 'undefined' ? 'undefined' : _typeof(pageInfo)) === 'object', 'RelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' + 'to return an object with %s: Object, got `%s`.', this.$options.name, PAGE_INFO, pageInfo);
         var hasMore = direction === FORWARD ? pageInfo[HAS_NEXT_PAGE] : pageInfo[HAS_PREV_PAGE];
         var cursor = direction === FORWARD ? pageInfo[END_CURSOR] : pageInfo[START_CURSOR];
         if (typeof hasMore !== 'boolean' || edges.length !== 0 && typeof cursor === 'undefined') {
@@ -953,7 +970,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
         },
         // Pass the variables used to fetch the fragments initially
         fragmentVariables);
-        invariant$2((typeof fetchVariables === 'undefined' ? 'undefined' : _typeof(fetchVariables)) === 'object' && fetchVariables !== null, 'RelayPaginationContainer: Expected `getVariables()` to ' + 'return an object, got `%s` in `%s`.', fetchVariables, this.$options.name);
+        invariant$3((typeof fetchVariables === 'undefined' ? 'undefined' : _typeof(fetchVariables)) === 'object' && fetchVariables !== null, 'RelayPaginationContainer: Expected `getVariables()` to ' + 'return an object, got `%s` in `%s`.', fetchVariables, this.$options.name);
         fetchVariables = _extends({}, fetchVariables, refetchVariables);
         this.setState({ localVariables: fetchVariables });
 
@@ -1049,13 +1066,24 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
   };
 };
 
-var createPaginationContainer = function createPaginationContainer(fragmentSpec, connectionConfig) {
-  return buildVueRelayContainer(fragmentSpec, function (fragments) {
+var createPaginationContainer = function createPaginationContainer() {
+  invariant$3(arguments.length === 2 || arguments.length === 3, 'createPaginationContainer: Expected `arguments.length` to be 2 or 3, got `%s`.', arguments);
+  if (arguments.length === 2) {
+    [].unshift.call(arguments, null);
+  }
+
+  var _arguments = Array.prototype.slice.call(arguments),
+      component = _arguments[0],
+      fragmentSpec = _arguments[1],
+      connectionConfig = _arguments[2];
+
+  return buildVueRelayContainer(component, fragmentSpec, function (fragments) {
     return createContainerWithFragments$1.call(this, fragments, connectionConfig);
   });
 };
 
 var areEqual$3 = require('fbjs/lib/areEqual');
+var invariant$4 = require('fbjs/lib/invariant');
 
 var createContainerWithFragments$2 = function createContainerWithFragments(fragments) {
   var relay = this.relay;
@@ -1065,7 +1093,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
     data: function data() {
       var createFragmentSpecResolver = relay.environment.unstable_internal.createFragmentSpecResolver;
 
-      var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props);
+      var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
 
       return {
         state: Object.freeze({
@@ -1081,9 +1109,6 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
         })
       };
     },
-    mounted: function mounted() {
-      this._subscribeToNewResolver();
-    },
     beforeUpdate: function beforeUpdate() {
       var _relay$environment$un = relay.environment.unstable_internal,
           createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
@@ -1097,7 +1122,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
 
       if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$3(prevIDs, nextIDs)) {
         resolver.dispose();
-        resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props);
+        resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
 
         this.setState({
           data: resolver.resolve(),
@@ -1128,9 +1153,6 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
         }
       }
     },
-    updated: function updated() {
-      this._subscribeToNewResolver();
-    },
     beforeDestroy: function beforeDestroy() {
       this.state.resolver.dispose();
     },
@@ -1147,26 +1169,22 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
             environment: this.state.relayProp.environment
           }
         });
-      },
-      _subscribeToNewResolver: function _subscribeToNewResolver() {
-        var resolver = this.state.resolver;
-
-
-        resolver.setCallback(this._handleFragmentDataUpdate);
-
-        // External values could change between render and commit.
-        // Check for this case, even though it requires an extra store read.
-        var data = resolver.resolve();
-        if (this.state.data !== data) {
-          this.setState({ data: data });
-        }
       }
     }
   };
 };
 
-var createFragmentContainer = function createFragmentContainer(fragmentSpec) {
-  return buildVueRelayContainer(fragmentSpec, createContainerWithFragments$2);
+var createFragmentContainer = function createFragmentContainer() {
+  invariant$4(arguments.length === 1 || arguments.length === 2, 'createFragmentContainer: Expected `arguments.length` to be 1 or 2, got `%s`.', arguments);
+  if (arguments.length === 1) {
+    [].unshift.call(arguments, null);
+  }
+
+  var _arguments = Array.prototype.slice.call(arguments),
+      component = _arguments[0],
+      fragmentSpec = _arguments[1];
+
+  return buildVueRelayContainer(component, fragmentSpec, createContainerWithFragments$2);
 };
 
 var _require$2 = require('relay-runtime'),

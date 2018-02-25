@@ -1,6 +1,7 @@
 import buildVueRelayContainer from './buildVueRelayContainer'
 
 const areEqual = require('fbjs/lib/areEqual')
+const invariant = require('fbjs/lib/invariant')
 
 const createContainerWithFragments = function (fragments) {
   const relay = this.relay
@@ -13,7 +14,8 @@ const createContainerWithFragments = function (fragments) {
         relay,
         this.$options.name,
         fragments,
-        this.$props
+        this.$props,
+        this._handleFragmentDataUpdate
       )
 
       return {
@@ -29,9 +31,6 @@ const createContainerWithFragments = function (fragments) {
           resolver
         })
       }
-    },
-    mounted () {
-      this._subscribeToNewResolver()
     },
     beforeUpdate () {
       const {
@@ -54,7 +53,8 @@ const createContainerWithFragments = function (fragments) {
           relay,
           this.$options.name,
           fragments,
-          this.$props
+          this.$props,
+          this._handleFragmentDataUpdate
         )
 
         this.setState({
@@ -86,9 +86,6 @@ const createContainerWithFragments = function (fragments) {
         }
       }
     },
-    updated () {
-      this._subscribeToNewResolver()
-    },
     beforeDestroy () {
       this.state.resolver.dispose()
     },
@@ -107,25 +104,24 @@ const createContainerWithFragments = function (fragments) {
             environment: this.state.relayProp.environment
           }
         })
-      },
-      _subscribeToNewResolver () {
-        const { resolver } = this.state
-
-        resolver.setCallback(this._handleFragmentDataUpdate)
-
-        // External values could change between render and commit.
-        // Check for this case, even though it requires an extra store read.
-        const data = resolver.resolve()
-        if (this.state.data !== data) {
-          this.setState({ data })
-        }
       }
     }
   }
 }
 
-const createFragmentContainer = function (fragmentSpec) {
-  return buildVueRelayContainer(fragmentSpec, createContainerWithFragments)
+const createFragmentContainer = function () {
+  invariant(
+    arguments.length === 1 || arguments.length === 2,
+    'createFragmentContainer: Expected `arguments.length` to be 1 or 2, got `%s`.',
+    arguments
+  )
+  if (arguments.length === 1) {
+    [].unshift.call(arguments, null)
+  }
+
+  const [component, fragmentSpec] = arguments
+
+  return buildVueRelayContainer(component, fragmentSpec, createContainerWithFragments)
 }
 
 export {

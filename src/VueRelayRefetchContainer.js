@@ -1,10 +1,12 @@
 import buildVueRelayContainer from './buildVueRelayContainer'
 
+const areEqual = require('fbjs/lib/areEqual')
+const invariant = require('fbjs/lib/invariant')
+
 const {
   RelayConcreteNode,
   Observable
 } = require('relay-runtime')
-const areEqual = require('fbjs/lib/areEqual')
 
 const createContainerWithFragments = function (fragments, taggedNode) {
   const relay = this.relay
@@ -215,8 +217,19 @@ const createContainerWithFragments = function (fragments, taggedNode) {
   }
 }
 
-const createRefetchContainer = function (fragmentSpec, taggedNode) {
-  return buildVueRelayContainer(fragmentSpec, function (fragments) {
+const createRefetchContainer = function () {
+  invariant(
+    arguments.length === 2 || arguments.length === 3,
+    'createRefetchContainer: Expected `arguments.length` to be 2 or 3, got `%s`.',
+    arguments
+  )
+  if (arguments.length === 2) {
+    [].unshift.call(arguments, null)
+  }
+
+  const [component, fragmentSpec, taggedNode] = arguments
+
+  return buildVueRelayContainer(component, fragmentSpec, function (fragments) {
     return createContainerWithFragments.call(this, fragments, taggedNode)
   })
 }

@@ -123,13 +123,15 @@ export default {
 
 ### Fragment Container
 
-`createFragmentContainer(fragmentSpec)`
+``` javascript
+createFragmentContainer([component, ]fragmentSpec)
+```
 
 #### Props
 
 - fragments as specified by the fragmentSpec
 
-#### Scoped Slot Props
+#### Component / Scoped Slot Props
 
 ``` javascript
 {
@@ -143,13 +145,15 @@ export default {
 
 ### Refetch Container
 
-#### `createRefetchContainer(fragmentSpec, refetchQuery)`
+``` javascript
+createRefetchContainer([component, ]fragmentSpec, refetchQuery)
+```
 
 #### Props
 
 - fragments as specified by the fragmentSpec
 
-#### Scoped Slot Props
+#### Component / Scoped Slot Props
 
 ``` javascript
 {
@@ -161,15 +165,17 @@ export default {
 }
 ```
 
-#### `createPaginationContainer(fragmentSpec, connectionConfig)`
-
 ### Pagination Container
+
+``` javascript
+createPaginationContainer([component, ]fragmentSpec, connectionConfig)
+```
 
 #### Props
 
 - fragments as specified by the fragmentSpec
 
-#### Scoped Slot Props
+#### Component / Scoped Slot Props
 
 ``` javascript
 {
@@ -187,9 +193,12 @@ export default {
 ### Comparison with `react-relay`
 
 - `QueryRenderer` does not take render function.
-- Container creating functions do not take component as argument. The rest of function signature remains the same.
+  - `vue-relay` replaces it with [scoped slots](https://vuejs.org/v2/guide/components.html#Scoped-Slots).
+- Container creating functions take `component` as an optional argument.
+  - If provided, a conatiner will pass props to the given `component`.
+  - If ommited, a conatiner will pass props to its default scoped slot.
+  - **Note:** Taking `component` as an arugment is a new feature that has not been release.
 
-`vue-relay` replaces them with [scoped slots](https://vuejs.org/v2/guide/components.html#Scoped-Slots) in both cases.
 
 ### Other APIs
 

@@ -472,7 +472,7 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
           var render = function render(h) {
             if (component != null) {
               return h(component, {
-                props: _extends({}, _this.state.data, {
+                props: _extends({}, context.$attrs, _this.state.data, {
                   relay: _this.state.relayProp
                 })
               });

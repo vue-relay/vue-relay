@@ -32,6 +32,7 @@ const buildVueRelayContainer = function (component, fragmentSpec, createContaine
             if (component != null) {
               return h(component, {
                 props: {
+                  ...context.$attrs,
                   ...this.state.data,
                   relay: this.state.relayProp
                 }

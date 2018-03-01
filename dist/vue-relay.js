@@ -461,7 +461,7 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
   return {
     name: 'relay-context-consumer',
     inject: ['relay'],
-    render: function render(h) {
+    created: function created() {
       var relay = assertRelayContext(this.relay);
       var getFragmentFromTag = relay.environment.unstable_internal.getFragment;
 
@@ -469,7 +469,7 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
 
       var context = this;
 
-      return h({
+      this.component = {
         extends: createContainerWithFragments.call(this, fragments),
         props: Object.keys(fragments),
         render: function render(h) {
@@ -478,7 +478,7 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
           var render = function render(h) {
             if (component != null) {
               return h(component, {
-                props: _extends({}, context.$attrs, _this.state.data, {
+                props: _extends({}, _this.$attrs, _this.state.data, {
                   relay: _this.state.relayProp
                 })
               });
@@ -502,7 +502,10 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
           }
           return render(h);
         }
-      }, {
+      };
+    },
+    render: function render(h) {
+      return h(this.component, {
         props: this.$attrs
       });
     }

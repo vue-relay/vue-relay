@@ -197,8 +197,6 @@ createPaginationContainer([component, ]fragmentSpec, connectionConfig)
 - Container creating functions take `component` as an optional argument.
   - If provided, a conatiner will pass props to the given `component`.
   - If ommited, a conatiner will pass props to its default scoped slot.
-  - **Note:** Taking `component` as an arugment is a new feature that has not been release.
-
 
 ### Other APIs
 

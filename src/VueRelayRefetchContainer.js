@@ -212,6 +212,17 @@ const createContainerWithFragments = function (fragments, taggedNode) {
             refetchSubscription && refetchSubscription.unsubscribe()
           }
         }
+      },
+      _release () {
+        this.state.resolver.dispose()
+        this.state.references.forEach(disposable => disposable.dispose())
+        this.state.references.length = 0
+        if (this.state.refetchSubscription) {
+          this.state.refetchSubscription.unsubscribe()
+          this.setState({
+            refetchSubscription: null
+          })
+        }
       }
     }
   }

@@ -689,6 +689,19 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
             refetchSubscription && refetchSubscription.unsubscribe();
           }
         };
+      },
+      _release: function _release() {
+        this.state.resolver.dispose();
+        this.state.references.forEach(function (disposable) {
+          return disposable.dispose();
+        });
+        this.state.references.length = 0;
+        if (this.state.refetchSubscription) {
+          this.state.refetchSubscription.unsubscribe();
+          this.setState({
+            refetchSubscription: null
+          });
+        }
       }
     }
   };

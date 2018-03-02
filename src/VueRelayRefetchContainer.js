@@ -1,10 +1,10 @@
+import VueRelayQueryFetcher from './VueRelayQueryFetcher'
 import buildVueRelayContainer from './buildVueRelayContainer'
 
 const areEqual = require('fbjs/lib/areEqual')
 const invariant = require('fbjs/lib/invariant')
 
 const {
-  RelayConcreteNode,
   Observable
 } = require('relay-runtime')
 
@@ -39,7 +39,6 @@ const createContainerWithFragments = function (fragments, taggedNode) {
           relayProp: this._buildRelayProp(relay),
           localVariables: null,
           refetchSubscription: null,
-          references: [],
           resolver
         })
       }
@@ -123,6 +122,12 @@ const createContainerWithFragments = function (fragments, taggedNode) {
           this.$props
         )
       },
+      _getQueryFetcher () {
+        if (!this.state.queryFetcher) {
+          this.setState({ queryFetcher: new VueRelayQueryFetcher() })
+        }
+        return this.state.queryFetcher
+      },
       _refetch (refetchVariables, renderVariables, observerOrCallback, options) {
         const { environment, variables: rootVariables } = relay
         const {
@@ -152,18 +157,7 @@ const createContainerWithFragments = function (fragments, taggedNode) {
             : observerOrCallback || ({})
 
         const request = getRequest(taggedNode)
-        if (request.kind === RelayConcreteNode.BATCH_REQUEST) {
-          throw new Error(
-            'RelayRefetchContainer: Batch request not yet ' +
-              'implemented (T22955000)'
-          )
-        }
         const operation = createOperationSelector(request, fetchVariables)
-
-        // Immediately retain the results of the query to prevent cached
-        // data from being evicted
-        const reference = environment.retain(operation.root)
-        this.state.references.push(reference)
 
         // Cancel any previously running refetch.
         if (this.state.refetchSubscription) {
@@ -174,8 +168,14 @@ const createContainerWithFragments = function (fragments, taggedNode) {
         // synchronous completion may call callbacks .subscribe() returns.
         let refetchSubscription
 
-        environment
-          .execute({ operation, cacheConfig })
+        this._getQueryFetcher()
+          .execute({
+            environment,
+            operation,
+            cacheConfig,
+            // TODO (T26430099): Cleanup old references
+            preservePreviousReferences: true
+          })
           .mergeMap(response => {
             this.context.relay.environment = relay.environment
             this.context.relay.variables = fragmentVariables
@@ -222,6 +222,9 @@ const createContainerWithFragments = function (fragments, taggedNode) {
           this.setState({
             refetchSubscription: null
           })
+        }
+        if (this.state.queryFetcher) {
+          this.state.queryFetcher.dispose()
         }
       }
     }

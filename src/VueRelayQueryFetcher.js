@@ -18,53 +18,36 @@ export default class VueRelayQueryFetcher {
     return null
   }
 
-  fetch (fetchOptions) {
-    const { cacheConfig, environment, onDataChange, operation } = fetchOptions
-
+  execute ({ environment, operation, cacheConfig, preservePreviousReferences = false }) {
     const { createOperationSelector } = environment.unstable_internal
     const nextReferences = []
-    let fetchHasReturned = false
-    let error
 
-    this._disposeRequest()
-    this._fetchOptions = fetchOptions
-
-    const request = environment
+    return environment
       .execute({ operation, cacheConfig })
-      .finally(() => {
-        this._pendingRequest = null
+      .map(payload => {
+        const operationForPayload = createOperationSelector(
+          operation.node,
+          payload.variables,
+          payload.operation
+        )
+        nextReferences.push(environment.retain(operationForPayload.root))
+        return payload
       })
-      .subscribe({
-        next: payload => {
-          const operationForPayload = createOperationSelector(
-            operation.node,
-            payload.variables,
-            payload.operation
-          )
-          nextReferences.push(environment.retain(operationForPayload.root))
-
-          // Only notify of the first result if `next` is being called **asynchronously**
-          // (i.e. after `fetch` has returned).
-          this._onQueryDataAvailable({ notifyFirstResult: fetchHasReturned })
-        },
-        error: err => {
+      .do({
+        error: () => {
           // We may have partially fulfilled the request, so let the next request
           // or the unmount dispose of the references.
           this._selectionReferences = this._selectionReferences.concat(
             nextReferences
           )
-
-          // Only notify of error if `error` is being called **asynchronously**
-          // (i.e. after `fetch` has returned).
-          if (fetchHasReturned) {
-            onDataChange({ error: err })
-          } else {
-            error = err
-          }
         },
         complete: () => {
-          this._disposeSelectionReferences()
-          this._selectionReferences = nextReferences
+          if (!preservePreviousReferences) {
+            this._disposeSelectionReferences()
+          }
+          this._selectionReferences = this._selectionReferences.concat(
+            nextReferences
+          )
         },
         unsubscribe: () => {
           // Let the next request or the unmount code dispose of the references.
@@ -72,6 +55,49 @@ export default class VueRelayQueryFetcher {
           this._selectionReferences = this._selectionReferences.concat(
             nextReferences
           )
+        }
+      })
+  }
+
+  /**
+   * `fetch` fetches the data for the given operation.
+   * If a result is immediately available synchronously, it will be synchronously
+   * returned by this function.
+   *
+   * Otherwise, the fetched result will be communicated via the `onDataChange` callback.
+   * `onDataChange` will be called with the first result (**if it wasn't returned synchronously**),
+   * and then subsequently whenever the data changes.
+   */
+  fetch (fetchOptions) {
+    const { cacheConfig, environment, onDataChange, operation } = fetchOptions
+    let fetchHasReturned = false
+    let error
+
+    this._disposeRequest()
+    this._fetchOptions = fetchOptions
+
+    const request = this.execute({
+      environment,
+      operation,
+      cacheConfig
+    })
+      .finally(() => {
+        this._pendingRequest = null
+      })
+      .subscribe({
+        next: () => {
+          // Only notify of the first result if `next` is being called **asynchronously**
+          // (i.e. after `fetch` has returned).
+          this._onQueryDataAvailable({ notifyFirstResult: fetchHasReturned })
+        },
+        error: err => {
+          // Only notify of error if `error` is being called **asynchronously**
+          // (i.e. after `fetch` has returned).
+          if (fetchHasReturned) {
+            onDataChange({ error: err })
+          } else {
+            error = err
+          }
         }
       })
 
@@ -91,7 +117,7 @@ export default class VueRelayQueryFetcher {
   retry () {
     invariant(
       this._fetchOptions,
-      'ReactRelayQueryFetcher: `retry` should be called after having called `fetch`'
+      'RelayQueryFetcher: `retry` should be called after having called `fetch`',
     )
     return this.fetch(this._fetchOptions)
   }
@@ -133,7 +159,7 @@ export default class VueRelayQueryFetcher {
   _onQueryDataAvailable ({ notifyFirstResult }) {
     invariant(
       this._fetchOptions,
-      'ReactRelayQueryFetcher: `_onQueryDataAvailable` should have been called after having called `fetch`'
+      'RelayQueryFetcher: `_onQueryDataAvailable` should have been called after having called `fetch`'
     )
     const { environment, onDataChange, operation } = this._fetchOptions
 

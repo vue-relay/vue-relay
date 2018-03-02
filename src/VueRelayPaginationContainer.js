@@ -1,3 +1,4 @@
+import VueRelayQueryFetcher from './VueRelayQueryFetcher'
 import buildVueRelayContainer from './buildVueRelayContainer'
 
 const areEqual = require('fbjs/lib/areEqual')
@@ -6,7 +7,6 @@ const warning = require('fbjs/lib/warning')
 
 const {
   ConnectionInterface,
-  RelayConcreteNode,
   Observable
 } = require('relay-runtime')
 
@@ -143,7 +143,6 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
           isARequestInFlight: false,
           localVariables: null,
           refetchSubscription: null,
-          references: [],
           resolver
         })
       }
@@ -351,6 +350,12 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         const fetch = this._fetchPage(paginatingVariables, observer, options)
         return { dispose: fetch.unsubscribe }
       },
+      _getQueryFetcher () {
+        if (!this.state.queryFetcher) {
+          this.setState({ queryFetcher: new VueRelayQueryFetcher() })
+        }
+        return this.state.queryFetcher
+      },
       _fetchPage (paginatingVariables, observer, options, refetchVariables) {
         const { environment } = relay
         const {
@@ -395,18 +400,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
           cacheConfig.rerunParamExperimental = options.rerunParamExperimental
         }
         const request = getRequest(connectionConfig.query)
-        if (request.kind === RelayConcreteNode.BATCH_REQUEST) {
-          throw new Error(
-            'RelayPaginationContainer: Batch request not yet ' +
-              'implemented (T22954884)'
-          )
-        }
         const operation = createOperationSelector(request, fetchVariables)
-
-        // Immediately retain the results of the query to prevent cached
-        // data from being evicted
-        const reference = environment.retain(operation.root)
-        this.state.references.push(reference)
 
         // Cancel any previously running refetch.
         if (this.state.refetchSubscription) {
@@ -455,8 +449,13 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         }
 
         this.setState({ isARequestInFlight: true })
-        const refetchSubscription = environment
-          .execute({ operation, cacheConfig })
+        const refetchSubscription = this._getQueryFetcher()
+          .execute({
+            environment,
+            operation,
+            cacheConfig,
+            preservePreviousReferences: true
+          })
           .mergeMap(payload =>
             Observable.create(sink => {
               onNext(payload, () => {
@@ -482,14 +481,15 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
       },
       _release () {
         this.state.resolver.dispose()
-        this.state.references.forEach(disposable => disposable.dispose())
-        this.state.references.length = 0
         if (this.state.refetchSubscription) {
           this.state.refetchSubscription.unsubscribe()
           this.setState({
             refetchSubscription: null,
             isARequestInFlight: false
           })
+        }
+        if (this.state.queryFetcher) {
+          this.state.queryFetcher.dispose()
         }
       }
     }

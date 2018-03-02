@@ -88,39 +88,82 @@ var VueRelayQueryFetcher = function () {
       return null;
     }
   }, {
+    key: 'execute',
+    value: function execute(_ref) {
+      var _this = this;
+
+      var environment = _ref.environment,
+          operation = _ref.operation,
+          cacheConfig = _ref.cacheConfig,
+          _ref$preservePrevious = _ref.preservePreviousReferences,
+          preservePreviousReferences = _ref$preservePrevious === undefined ? false : _ref$preservePrevious;
+      var createOperationSelector = environment.unstable_internal.createOperationSelector;
+
+      var nextReferences = [];
+
+      return environment.execute({ operation: operation, cacheConfig: cacheConfig }).map(function (payload) {
+        var operationForPayload = createOperationSelector(operation.node, payload.variables, payload.operation);
+        nextReferences.push(environment.retain(operationForPayload.root));
+        return payload;
+      }).do({
+        error: function error() {
+          // We may have partially fulfilled the request, so let the next request
+          // or the unmount dispose of the references.
+          _this._selectionReferences = _this._selectionReferences.concat(nextReferences);
+        },
+        complete: function complete() {
+          if (!preservePreviousReferences) {
+            _this._disposeSelectionReferences();
+          }
+          _this._selectionReferences = _this._selectionReferences.concat(nextReferences);
+        },
+        unsubscribe: function unsubscribe() {
+          // Let the next request or the unmount code dispose of the references.
+          // We may have partially fulfilled the request.
+          _this._selectionReferences = _this._selectionReferences.concat(nextReferences);
+        }
+      });
+    }
+
+    /**
+     * `fetch` fetches the data for the given operation.
+     * If a result is immediately available synchronously, it will be synchronously
+     * returned by this function.
+     *
+     * Otherwise, the fetched result will be communicated via the `onDataChange` callback.
+     * `onDataChange` will be called with the first result (**if it wasn't returned synchronously**),
+     * and then subsequently whenever the data changes.
+     */
+
+  }, {
     key: 'fetch',
     value: function fetch(fetchOptions) {
-      var _this = this;
+      var _this2 = this;
 
       var cacheConfig = fetchOptions.cacheConfig,
           environment = fetchOptions.environment,
           onDataChange = fetchOptions.onDataChange,
           operation = fetchOptions.operation;
-      var createOperationSelector = environment.unstable_internal.createOperationSelector;
 
-      var nextReferences = [];
       var fetchHasReturned = false;
       var _error = void 0;
 
       this._disposeRequest();
       this._fetchOptions = fetchOptions;
 
-      var request = environment.execute({ operation: operation, cacheConfig: cacheConfig }).finally(function () {
-        _this._pendingRequest = null;
+      var request = this.execute({
+        environment: environment,
+        operation: operation,
+        cacheConfig: cacheConfig
+      }).finally(function () {
+        _this2._pendingRequest = null;
       }).subscribe({
-        next: function next(payload) {
-          var operationForPayload = createOperationSelector(operation.node, payload.variables, payload.operation);
-          nextReferences.push(environment.retain(operationForPayload.root));
-
+        next: function next() {
           // Only notify of the first result if `next` is being called **asynchronously**
           // (i.e. after `fetch` has returned).
-          _this._onQueryDataAvailable({ notifyFirstResult: fetchHasReturned });
+          _this2._onQueryDataAvailable({ notifyFirstResult: fetchHasReturned });
         },
         error: function error(err) {
-          // We may have partially fulfilled the request, so let the next request
-          // or the unmount dispose of the references.
-          _this._selectionReferences = _this._selectionReferences.concat(nextReferences);
-
           // Only notify of error if `error` is being called **asynchronously**
           // (i.e. after `fetch` has returned).
           if (fetchHasReturned) {
@@ -128,15 +171,6 @@ var VueRelayQueryFetcher = function () {
           } else {
             _error = err;
           }
-        },
-        complete: function complete() {
-          _this._disposeSelectionReferences();
-          _this._selectionReferences = nextReferences;
-        },
-        unsubscribe: function unsubscribe() {
-          // Let the next request or the unmount code dispose of the references.
-          // We may have partially fulfilled the request.
-          _this._selectionReferences = _this._selectionReferences.concat(nextReferences);
         }
       });
 
@@ -155,7 +189,7 @@ var VueRelayQueryFetcher = function () {
   }, {
     key: 'retry',
     value: function retry() {
-      invariant(this._fetchOptions, 'ReactRelayQueryFetcher: `retry` should be called after having called `fetch`');
+      invariant(this._fetchOptions, 'RelayQueryFetcher: `retry` should be called after having called `fetch`');
       return this.fetch(this._fetchOptions);
     }
   }, {
@@ -201,10 +235,10 @@ var VueRelayQueryFetcher = function () {
     }
   }, {
     key: '_onQueryDataAvailable',
-    value: function _onQueryDataAvailable(_ref) {
-      var notifyFirstResult = _ref.notifyFirstResult;
+    value: function _onQueryDataAvailable(_ref2) {
+      var notifyFirstResult = _ref2.notifyFirstResult;
 
-      invariant(this._fetchOptions, 'ReactRelayQueryFetcher: `_onQueryDataAvailable` should have been called after having called `fetch`');
+      invariant(this._fetchOptions, 'RelayQueryFetcher: `_onQueryDataAvailable` should have been called after having called `fetch`');
       var _fetchOptions = this._fetchOptions,
           environment = _fetchOptions.environment,
           onDataChange = _fetchOptions.onDataChange,
@@ -517,7 +551,6 @@ var areEqual$1 = require('fbjs/lib/areEqual');
 var invariant$2 = require('fbjs/lib/invariant');
 
 var _require = require('relay-runtime'),
-    RelayConcreteNode = _require.RelayConcreteNode,
     Observable = _require.Observable;
 
 var createContainerWithFragments = function createContainerWithFragments(fragments, taggedNode) {
@@ -546,7 +579,6 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
           relayProp: this._buildRelayProp(relay),
           localVariables: null,
           refetchSubscription: null,
-          references: [],
           resolver: resolver
         })
       };
@@ -613,6 +645,12 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
 
         return getVariablesFromObject(relay.variables, fragments, this.$props);
       },
+      _getQueryFetcher: function _getQueryFetcher() {
+        if (!this.state.queryFetcher) {
+          this.setState({ queryFetcher: new VueRelayQueryFetcher() });
+        }
+        return this.state.queryFetcher;
+      },
       _refetch: function _refetch(refetchVariables, renderVariables, observerOrCallback, options) {
         var _this = this;
 
@@ -637,15 +675,7 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
         } : observerOrCallback || {};
 
         var request = getRequest(taggedNode);
-        if (request.kind === RelayConcreteNode.BATCH_REQUEST) {
-          throw new Error('RelayRefetchContainer: Batch request not yet ' + 'implemented (T22955000)');
-        }
         var operation = createOperationSelector(request, fetchVariables);
-
-        // Immediately retain the results of the query to prevent cached
-        // data from being evicted
-        var reference = environment.retain(operation.root);
-        this.state.references.push(reference);
 
         // Cancel any previously running refetch.
         if (this.state.refetchSubscription) {
@@ -656,7 +686,13 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
         // synchronous completion may call callbacks .subscribe() returns.
         var refetchSubscription = void 0;
 
-        environment.execute({ operation: operation, cacheConfig: cacheConfig }).mergeMap(function (response) {
+        this._getQueryFetcher().execute({
+          environment: environment,
+          operation: operation,
+          cacheConfig: cacheConfig,
+          // TODO (T26430099): Cleanup old references
+          preservePreviousReferences: true
+        }).mergeMap(function (response) {
           _this.context.relay.environment = relay.environment;
           _this.context.relay.variables = fragmentVariables;
           _this.state.resolver.setVariables(fragmentVariables);
@@ -702,6 +738,9 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
             refetchSubscription: null
           });
         }
+        if (this.state.queryFetcher) {
+          this.state.queryFetcher.dispose();
+        }
       }
     }
   };
@@ -729,7 +768,6 @@ var warning = require('fbjs/lib/warning');
 
 var _require$1 = require('relay-runtime'),
     ConnectionInterface = _require$1.ConnectionInterface,
-    RelayConcreteNode$1 = _require$1.RelayConcreteNode,
     Observable$1 = _require$1.Observable;
 
 var FORWARD = 'forward';
@@ -827,7 +865,6 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
           isARequestInFlight: false,
           localVariables: null,
           refetchSubscription: null,
-          references: [],
           resolver: resolver
         })
       };
@@ -973,6 +1010,12 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
         var fetch = this._fetchPage(paginatingVariables, observer, options);
         return { dispose: fetch.unsubscribe };
       },
+      _getQueryFetcher: function _getQueryFetcher() {
+        if (!this.state.queryFetcher) {
+          this.setState({ queryFetcher: new VueRelayQueryFetcher() });
+        }
+        return this.state.queryFetcher;
+      },
       _fetchPage: function _fetchPage(paginatingVariables, observer, options, refetchVariables) {
         var _this = this;
 
@@ -1000,15 +1043,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
           cacheConfig.rerunParamExperimental = options.rerunParamExperimental;
         }
         var request = getRequest(connectionConfig.query);
-        if (request.kind === RelayConcreteNode$1.BATCH_REQUEST) {
-          throw new Error('RelayPaginationContainer: Batch request not yet ' + 'implemented (T22954884)');
-        }
         var operation = createOperationSelector(request, fetchVariables);
-
-        // Immediately retain the results of the query to prevent cached
-        // data from being evicted
-        var reference = environment.retain(operation.root);
-        this.state.references.push(reference);
 
         // Cancel any previously running refetch.
         if (this.state.refetchSubscription) {
@@ -1049,7 +1084,12 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
         };
 
         this.setState({ isARequestInFlight: true });
-        var refetchSubscription = environment.execute({ operation: operation, cacheConfig: cacheConfig }).mergeMap(function (payload) {
+        var refetchSubscription = this._getQueryFetcher().execute({
+          environment: environment,
+          operation: operation,
+          cacheConfig: cacheConfig,
+          preservePreviousReferences: true
+        }).mergeMap(function (payload) {
           return Observable$1.create(function (sink) {
             onNext(payload, function () {
               sink.next(); // pass void to public observer's `next`
@@ -1071,16 +1111,15 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
       },
       _release: function _release() {
         this.state.resolver.dispose();
-        this.state.references.forEach(function (disposable) {
-          return disposable.dispose();
-        });
-        this.state.references.length = 0;
         if (this.state.refetchSubscription) {
           this.state.refetchSubscription.unsubscribe();
           this.setState({
             refetchSubscription: null,
             isARequestInFlight: false
           });
+        }
+        if (this.state.queryFetcher) {
+          this.state.queryFetcher.dispose();
         }
       }
     }

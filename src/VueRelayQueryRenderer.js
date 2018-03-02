@@ -192,11 +192,8 @@ export default {
   beforeDestroy () {
     this.state.queryFetcher.dispose()
   },
-  render (h) {
-    if (process.env.NODE_ENV !== 'production') {
-      require('relay-runtime/lib/deepFreeze')(this.state.renderProps)
-    }
-    return h({
+  created () {
+    this.component = {
       name: 'relay-context-provider',
       provide: {
         relay: this.context.relay
@@ -206,11 +203,15 @@ export default {
           props: {
             include: []
           }
-        }, [
-          this.$scopedSlots.default(this.state.renderProps)
-        ])
+        }, this.$scopedSlots.default(this.state.renderProps))
       }
-    })
+    }
+  },
+  render (h) {
+    if (process.env.NODE_ENV !== 'production') {
+      require('relay-runtime/lib/deepFreeze')(this.state.renderProps)
+    }
+    return h(this.component)
   },
   methods: {
     setState (state) {

@@ -403,13 +403,10 @@ var QueryRenderer = {
   beforeDestroy: function beforeDestroy() {
     this.state.queryFetcher.dispose();
   },
-  render: function render(h) {
+  created: function created() {
     var _this2 = this;
 
-    if (process.env.NODE_ENV !== 'production') {
-      require('relay-runtime/lib/deepFreeze')(this.state.renderProps);
-    }
-    return h({
+    this.component = {
       name: 'relay-context-provider',
       provide: {
         relay: this.context.relay
@@ -419,9 +416,15 @@ var QueryRenderer = {
           props: {
             include: []
           }
-        }, [_this2.$scopedSlots.default(_this2.state.renderProps)]);
+        }, _this2.$scopedSlots.default(_this2.state.renderProps));
       }
-    });
+    };
+  },
+  render: function render(h) {
+    if (process.env.NODE_ENV !== 'production') {
+      require('relay-runtime/lib/deepFreeze')(this.state.renderProps);
+    }
+    return h(this.component);
   },
 
   methods: {
@@ -466,35 +469,37 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
       this.component = {
         extends: createContainerWithFragments.call(this, fragments),
         props: Object.keys(fragments),
-        render: function render(h) {
+        created: function created() {
           var _this = this;
 
-          var render = function render(h) {
-            if (component != null) {
-              return h(component, {
-                props: _extends({}, _this.$attrs, _this.state.data, {
-                  relay: _this.state.relayProp
-                })
-              });
-            }
-            return h('keep-alive', {
-              props: {
-                include: []
+          this.component = {
+            name: 'relay-context-provider',
+            provide: {
+              relay: (this.context || context).relay
+            },
+            render: function render(h) {
+              if (component != null) {
+                return h(component, {
+                  props: _extends({}, _this.$attrs, _this.state.data, {
+                    relay: _this.state.relayProp
+                  })
+                });
               }
-            }, [context.$scopedSlots.default(_extends({}, _this.state.data, {
-              relay: _this.state.relayProp
-            }))]);
+              return h('keep-alive', {
+                props: {
+                  include: []
+                }
+              }, context.$scopedSlots.default(_extends({}, _this.state.data, {
+                relay: _this.state.relayProp
+              })));
+            }
           };
+        },
+        render: function render(h) {
           if (this.context) {
-            return h({
-              name: 'relay-context-provider',
-              provide: {
-                relay: this.context.relay
-              },
-              render: render
-            });
+            return h(this.component);
           }
-          return render(h);
+          return this.component.render(h);
         }
       };
     },

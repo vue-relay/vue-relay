@@ -27,38 +27,38 @@ const buildVueRelayContainer = function (component, fragmentSpec, createContaine
       this.component = {
         extends: createContainerWithFragments.call(this, fragments),
         props: Object.keys(fragments),
-        render (h) {
-          const render = (h) => {
-            if (component != null) {
-              return h(component, {
-                props: {
-                  ...this.$attrs,
-                  ...this.state.data,
-                  relay: this.state.relayProp
-                }
-              })
-            }
-            return h('keep-alive', {
-              props: {
-                include: []
+        created () {
+          this.component = {
+            name: 'relay-context-provider',
+            provide: {
+              relay: (this.context || context).relay
+            },
+            render: (h) => {
+              if (component != null) {
+                return h(component, {
+                  props: {
+                    ...this.$attrs,
+                    ...this.state.data,
+                    relay: this.state.relayProp
+                  }
+                })
               }
-            }, [
-              context.$scopedSlots.default({
+              return h('keep-alive', {
+                props: {
+                  include: []
+                }
+              }, context.$scopedSlots.default({
                 ...this.state.data,
                 relay: this.state.relayProp
-              })
-            ])
+              }))
+            }
           }
+        },
+        render (h) {
           if (this.context) {
-            return h({
-              name: 'relay-context-provider',
-              provide: {
-                relay: this.context.relay
-              },
-              render
-            })
+            return h(this.component)
           }
-          return render(h)
+          return this.component.render(h)
         }
       }
     },

@@ -68,6 +68,16 @@ var _extends = Object.assign || function (target) {
   return target;
 };
 
+var toConsumableArray = function (arr) {
+  if (Array.isArray(arr)) {
+    for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) arr2[i] = arr[i];
+
+    return arr2;
+  } else {
+    return Array.from(arr);
+  }
+};
+
 var invariant = require('fbjs/lib/invariant');
 
 var VueRelayQueryFetcher = function () {
@@ -431,7 +441,7 @@ var QueryRenderer = {
       this.state = Object.freeze(_extends({}, this.state, state));
     }
   },
-  watch: _extends({}, Object.keys(props).map(function (key) {
+  watch: Object.assign.apply(Object, toConsumableArray(Object.keys(props).map(function (key) {
     return defineProperty({}, key, function () {
       if (this.state.prevQuery !== this.query || this.state.prevPropsEnvironment !== this.environment || !areEqual(this.state.prevPropsVariables, this.variables)) {
         var state = fetchQueryAndComputeStateFromProps(this.$props, this.state.queryFetcher, this.state.retryCallbacks);
@@ -449,7 +459,7 @@ var QueryRenderer = {
         }, state));
       }
     });
-  })),
+  }))),
   render: function render(h) {
     {
       require('relay-runtime/lib/deepFreeze')(this.state.renderProps);
@@ -710,7 +720,7 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
         }
       }
     },
-    watch: _extends({}, Object.keys(fragments).map(function (key) {
+    watch: Object.assign.apply(Object, toConsumableArray(Object.keys(fragments).map(function (key) {
       return defineProperty({}, key, function () {
         var _relay$environment$un = relay.environment.unstable_internal,
             createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
@@ -749,7 +759,7 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
           this.setState({ data: data });
         }
       });
-    })),
+    }))),
     beforeDestroy: function beforeDestroy() {
       this._release();
     }
@@ -1092,7 +1102,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
         }
       }
     },
-    watch: _extends({}, Object.keys(fragments).map(function (key) {
+    watch: Object.assign.apply(Object, toConsumableArray(Object.keys(fragments).map(function (key) {
       return defineProperty({}, key, function () {
         var _relay$environment$un = relay.environment.unstable_internal,
             createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
@@ -1131,7 +1141,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
           this.setState({ data: data });
         }
       });
-    })),
+    }))),
     beforeDestroy: function beforeDestroy() {
       this._release();
     }
@@ -1196,7 +1206,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
         });
       }
     },
-    watch: _extends({}, Object.keys(fragments).map(function (key) {
+    watch: Object.assign.apply(Object, toConsumableArray(Object.keys(fragments).map(function (key) {
       return defineProperty({}, key, function () {
         var _relay$environment$un = relay.environment.unstable_internal,
             createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
@@ -1241,7 +1251,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
           }
         }
       });
-    })),
+    }))),
     beforeDestroy: function beforeDestroy() {
       this.state.resolver.dispose();
     }

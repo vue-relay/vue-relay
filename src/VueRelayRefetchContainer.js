@@ -177,7 +177,7 @@ const createContainerWithFragments = function (fragments, taggedNode) {
         }
       }
     },
-    watch: { ...Object.keys(fragments).map((key) => ({ [key]: function () {
+    watch: Object.assign(...Object.keys(fragments).map((key) => ({ [key]: function () {
       const {
         createFragmentSpecResolver,
         getDataIDsFromObject
@@ -224,7 +224,7 @@ const createContainerWithFragments = function (fragments, taggedNode) {
       if (data !== this.state.data) {
         this.setState({ data })
       }
-    } })) },
+    } }))),
     beforeDestroy () {
       this._release()
     }

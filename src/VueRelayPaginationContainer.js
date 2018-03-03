@@ -442,7 +442,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         }
       }
     },
-    watch: { ...Object.keys(fragments).map((key) => ({ [key]: function () {
+    watch: Object.assign(...Object.keys(fragments).map((key) => ({ [key]: function () {
       const {
         createFragmentSpecResolver,
         getDataIDsFromObject
@@ -489,7 +489,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
       if (data !== this.state.data) {
         this.setState({ data })
       }
-    } })) },
+    } }))),
     beforeDestroy () {
       this._release()
     }

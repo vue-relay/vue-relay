@@ -364,22 +364,24 @@ var fetchQueryAndComputeStateFromProps = function fetchQueryAndComputeStateFromP
   }
 };
 
+var props = {
+  cacheConfig: {},
+  dataFrom: {},
+  environment: {
+    required: true
+  },
+  query: {},
+  variables: {
+    type: Object,
+    default: function _default() {
+      return {};
+    }
+  }
+};
+
 var QueryRenderer = {
   name: 'relay-query-renderer',
-  props: {
-    cacheConfig: {},
-    dataFrom: {},
-    environment: {
-      required: true
-    },
-    query: {},
-    variables: {
-      type: Object,
-      default: function _default() {
-        return {};
-      }
-    }
-  },
+  props: props,
   data: function data() {
     var _this = this;
 
@@ -415,33 +417,44 @@ var QueryRenderer = {
         }
       }),
       state: Object.freeze(_extends({
-        prevPropsEnvironment: this.$props.environment,
-        prevPropsVariables: this.$props.variables,
-        prevQuery: this.$props.query,
+        prevPropsEnvironment: this.environment,
+        prevPropsVariables: this.variables,
+        prevQuery: this.query,
         queryFetcher: queryFetcher,
         retryCallbacks: retryCallbacks
       }, state))
     };
   },
-  beforeUpdate: function beforeUpdate() {
-    if (this.state.prevQuery !== this.query || this.state.prevPropsEnvironment !== this.environment || !areEqual(this.state.prevPropsVariables, this.variables)) {
-      var state = fetchQueryAndComputeStateFromProps(this.$props, this.state.queryFetcher, this.state.retryCallbacks);
 
-      // React getDerivedStateFromProps is static method.
-      // Vue beforeUpdate is instance method.
-      // Thus updaing relayContext here instead of in render.
-      this.context.relay.environment = state.relayContextEnvironment;
-      this.context.relay.variables = state.relayContextVariables;
-
-      this.setState(_extends({
-        prevQuery: this.query,
-        prevPropsEnvironment: this.environment,
-        prevPropsVariables: this.variables
-      }, state));
+  methods: {
+    setState: function setState(state) {
+      this.state = Object.freeze(_extends({}, this.state, state));
     }
   },
-  beforeDestroy: function beforeDestroy() {
-    this.state.queryFetcher.dispose();
+  watch: _extends({}, Object.keys(props).map(function (key) {
+    return defineProperty({}, key, function () {
+      if (this.state.prevQuery !== this.query || this.state.prevPropsEnvironment !== this.environment || !areEqual(this.state.prevPropsVariables, this.variables)) {
+        var state = fetchQueryAndComputeStateFromProps(this.$props, this.state.queryFetcher, this.state.retryCallbacks);
+
+        // React getDerivedStateFromProps is static method.
+        // Vue beforeUpdate is instance method.
+        // Thus updaing relayContext here instead of in render.
+        this.context.relay.environment = state.relayContextEnvironment;
+        this.context.relay.variables = state.relayContextVariables;
+
+        this.setState(_extends({
+          prevQuery: this.query,
+          prevPropsEnvironment: this.environment,
+          prevPropsVariables: this.variables
+        }, state));
+      }
+    });
+  })),
+  render: function render(h) {
+    {
+      require('relay-runtime/lib/deepFreeze')(this.state.renderProps);
+    }
+    return h(this.component);
   },
   created: function created() {
     var _this2 = this;
@@ -460,17 +473,8 @@ var QueryRenderer = {
       }
     };
   },
-  render: function render(h) {
-    {
-      require('relay-runtime/lib/deepFreeze')(this.state.renderProps);
-    }
-    return h(this.component);
-  },
-
-  methods: {
-    setState: function setState(state) {
-      this.state = Object.freeze(_extends({}, this.state, state));
-    }
+  beforeDestroy: function beforeDestroy() {
+    this.state.queryFetcher.dispose();
   }
 };
 
@@ -498,6 +502,11 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
   return {
     name: 'relay-context-consumer',
     inject: ['relay'],
+    render: function render(h) {
+      return h(this.component, {
+        props: this.$attrs
+      });
+    },
     created: function created() {
       var relay = assertRelayContext(this.relay);
       var getFragmentFromTag = relay.environment.unstable_internal.getFragment;
@@ -509,6 +518,12 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
       this.component = {
         extends: createContainerWithFragments.call(this, fragments),
         props: Object.keys(fragments),
+        render: function render(h) {
+          if (this.context) {
+            return h(this.component);
+          }
+          return this.component.render(h);
+        },
         created: function created() {
           var _this = this;
 
@@ -534,19 +549,8 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
               })));
             }
           };
-        },
-        render: function render(h) {
-          if (this.context) {
-            return h(this.component);
-          }
-          return this.component.render(h);
         }
       };
-    },
-    render: function render(h) {
-      return h(this.component, {
-        props: this.$attrs
-      });
     }
   };
 };
@@ -586,47 +590,6 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
           resolver: resolver
         })
       };
-    },
-    beforeUpdate: function beforeUpdate() {
-      var _relay$environment$un = relay.environment.unstable_internal,
-          createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
-          getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
-
-
-      var prevIDs = getDataIDsFromObject(fragments, this.state.prevProps);
-      var nextIDs = getDataIDsFromObject(fragments, this.$props);
-
-      // If the environment has changed or props point to new records then
-      // previously fetched data and any pending fetches no longer apply:
-      // - Existing references are on the old environment.
-      // - Existing references are based on old variables.
-      // - Pending fetches are for the previous records.
-      if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$1(prevIDs, nextIDs)) {
-        this._release();
-
-        this.context.relay.environment = relay.environment;
-        this.context.relay.variables = relay.variables;
-
-        var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
-
-        this.setState({
-          prevProps: this.$props,
-          relayEnvironment: relay.environment,
-          relayVariables: relay.variables,
-          relayProp: this._buildRelayProp(relay),
-          localVariables: null,
-          resolver: resolver
-        });
-      } else if (!this.state.localVariables) {
-        this.state.resolver.setProps(this.$props);
-      }
-      var data = this.state.resolver.resolve();
-      if (data !== this.state.data) {
-        this.setState({ data: data });
-      }
-    },
-    beforeDestroy: function beforeDestroy() {
-      this._release();
     },
 
     methods: {
@@ -746,6 +709,49 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
           this.state.queryFetcher.dispose();
         }
       }
+    },
+    watch: _extends({}, Object.keys(fragments).map(function (key) {
+      return defineProperty({}, key, function () {
+        var _relay$environment$un = relay.environment.unstable_internal,
+            createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
+            getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
+
+
+        var prevIDs = getDataIDsFromObject(fragments, this.state.prevProps);
+        var nextIDs = getDataIDsFromObject(fragments, this.$props);
+
+        // If the environment has changed or props point to new records then
+        // previously fetched data and any pending fetches no longer apply:
+        // - Existing references are on the old environment.
+        // - Existing references are based on old variables.
+        // - Pending fetches are for the previous records.
+        if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$1(prevIDs, nextIDs)) {
+          this._release();
+
+          this.context.relay.environment = relay.environment;
+          this.context.relay.variables = relay.variables;
+
+          var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+
+          this.setState({
+            prevProps: this.$props,
+            relayEnvironment: relay.environment,
+            relayVariables: relay.variables,
+            relayProp: this._buildRelayProp(relay),
+            localVariables: null,
+            resolver: resolver
+          });
+        } else if (!this.state.localVariables) {
+          this.state.resolver.setProps(this.$props);
+        }
+        var data = this.state.resolver.resolve();
+        if (data !== this.state.data) {
+          this.setState({ data: data });
+        }
+      });
+    })),
+    beforeDestroy: function beforeDestroy() {
+      this._release();
     }
   };
 };
@@ -872,47 +878,6 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
           resolver: resolver
         })
       };
-    },
-    beforeUpdate: function beforeUpdate() {
-      var _relay$environment$un = relay.environment.unstable_internal,
-          createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
-          getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
-
-
-      var prevIDs = getDataIDsFromObject(fragments, this.state.prevProps);
-      var nextIDs = getDataIDsFromObject(fragments, this.$props);
-
-      // If the environment has changed or props point to new records then
-      // previously fetched data and any pending fetches no longer apply:
-      // - Existing references are on the old environment.
-      // - Existing references are based on old variables.
-      // - Pending fetches are for the previous records.
-      if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$2(prevIDs, nextIDs)) {
-        this._release();
-
-        this.context.relay.environment = relay.environment;
-        this.context.relay.variables = relay.variables;
-
-        var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
-
-        this.setState({
-          prevProps: this.$props,
-          relayEnvironment: relay.environment,
-          relayVariables: relay.variables,
-          relayProp: this._buildRelayProp(relay),
-          localVariables: null,
-          resolver: resolver
-        });
-      } else if (!this.state.localVariables) {
-        this.state.resolver.setProps(this.$props);
-      }
-      var data = this.state.resolver.resolve();
-      if (data !== this.state.data) {
-        this.setState({ data: data });
-      }
-    },
-    beforeDestroy: function beforeDestroy() {
-      this._release();
     },
 
     methods: {
@@ -1126,6 +1091,49 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
           this.state.queryFetcher.dispose();
         }
       }
+    },
+    watch: _extends({}, Object.keys(fragments).map(function (key) {
+      return defineProperty({}, key, function () {
+        var _relay$environment$un = relay.environment.unstable_internal,
+            createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
+            getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
+
+
+        var prevIDs = getDataIDsFromObject(fragments, this.state.prevProps);
+        var nextIDs = getDataIDsFromObject(fragments, this.$props);
+
+        // If the environment has changed or props point to new records then
+        // previously fetched data and any pending fetches no longer apply:
+        // - Existing references are on the old environment.
+        // - Existing references are based on old variables.
+        // - Pending fetches are for the previous records.
+        if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$2(prevIDs, nextIDs)) {
+          this._release();
+
+          this.context.relay.environment = relay.environment;
+          this.context.relay.variables = relay.variables;
+
+          var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+
+          this.setState({
+            prevProps: this.$props,
+            relayEnvironment: relay.environment,
+            relayVariables: relay.variables,
+            relayProp: this._buildRelayProp(relay),
+            localVariables: null,
+            resolver: resolver
+          });
+        } else if (!this.state.localVariables) {
+          this.state.resolver.setProps(this.$props);
+        }
+        var data = this.state.resolver.resolve();
+        if (data !== this.state.data) {
+          this.setState({ data: data });
+        }
+      });
+    })),
+    beforeDestroy: function beforeDestroy() {
+      this._release();
     }
   };
 };
@@ -1173,53 +1181,6 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
         })
       };
     },
-    beforeUpdate: function beforeUpdate() {
-      var _relay$environment$un = relay.environment.unstable_internal,
-          createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
-          getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
-
-
-      var prevIDs = getDataIDsFromObject(fragments, this.state.prevProps);
-      var nextIDs = getDataIDsFromObject(fragments, this.$props);
-
-      var resolver = this.state.resolver;
-
-      if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$3(prevIDs, nextIDs)) {
-        resolver.dispose();
-        resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
-
-        this.setState({
-          data: resolver.resolve(),
-          prevProps: this.$props,
-          relayEnvironment: relay.environment,
-          relayVariables: relay.variables,
-          relayProp: {
-            isLoading: resolver.isLoading(),
-            environment: relay.environment
-          },
-          resolver: resolver
-        });
-      } else {
-        resolver.setProps(this.$props);
-
-        var data = resolver.resolve();
-        if (data !== this.state.data) {
-          this.setState({
-            data: data,
-            prevProps: this.$props,
-            relayEnvironment: relay.environment,
-            relayVariables: relay.variables,
-            relayProp: {
-              isLoading: resolver.isLoading(),
-              environment: relay.environment
-            }
-          });
-        }
-      }
-    },
-    beforeDestroy: function beforeDestroy() {
-      this.state.resolver.dispose();
-    },
 
     methods: {
       setState: function setState(state) {
@@ -1234,6 +1195,55 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
           }
         });
       }
+    },
+    watch: _extends({}, Object.keys(fragments).map(function (key) {
+      return defineProperty({}, key, function () {
+        var _relay$environment$un = relay.environment.unstable_internal,
+            createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
+            getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
+
+
+        var prevIDs = getDataIDsFromObject(fragments, this.state.prevProps);
+        var nextIDs = getDataIDsFromObject(fragments, this.$props);
+
+        var resolver = this.state.resolver;
+
+        if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$3(prevIDs, nextIDs)) {
+          resolver.dispose();
+          resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+
+          this.setState({
+            data: resolver.resolve(),
+            prevProps: this.$props,
+            relayEnvironment: relay.environment,
+            relayVariables: relay.variables,
+            relayProp: {
+              isLoading: resolver.isLoading(),
+              environment: relay.environment
+            },
+            resolver: resolver
+          });
+        } else {
+          resolver.setProps(this.$props);
+
+          var data = resolver.resolve();
+          if (data !== this.state.data) {
+            this.setState({
+              data: data,
+              prevProps: this.$props,
+              relayEnvironment: relay.environment,
+              relayVariables: relay.variables,
+              relayProp: {
+                isLoading: resolver.isLoading(),
+                environment: relay.environment
+              }
+            });
+          }
+        }
+      });
+    })),
+    beforeDestroy: function beforeDestroy() {
+      this.state.resolver.dispose();
     }
   };
 };

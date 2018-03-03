@@ -106,20 +106,22 @@ const fetchQueryAndComputeStateFromProps = function (props, queryFetcher, retryC
   }
 }
 
+const props = {
+  cacheConfig: {},
+  dataFrom: {},
+  environment: {
+    required: true
+  },
+  query: {},
+  variables: {
+    type: Object,
+    default: () => ({})
+  }
+}
+
 export default {
   name: 'relay-query-renderer',
-  props: {
-    cacheConfig: {},
-    dataFrom: {},
-    environment: {
-      required: true
-    },
-    query: {},
-    variables: {
-      type: Object,
-      default: () => ({})
-    }
-  },
+  props,
   data () {
     const handleDataChange = ({ error, snapshot }) => {
       this.setState({ renderProps: getRenderProps(error, snapshot, queryFetcher, retryCallbacks) })
@@ -154,16 +156,24 @@ export default {
         }
       }),
       state: Object.freeze({
-        prevPropsEnvironment: this.$props.environment,
-        prevPropsVariables: this.$props.variables,
-        prevQuery: this.$props.query,
+        prevPropsEnvironment: this.environment,
+        prevPropsVariables: this.variables,
+        prevQuery: this.query,
         queryFetcher,
         retryCallbacks,
         ...state
       })
     }
   },
-  beforeUpdate () {
+  methods: {
+    setState (state) {
+      this.state = Object.freeze({
+        ...this.state,
+        ...state
+      })
+    }
+  },
+  watch: { ...Object.keys(props).map((key) => ({ [key]: function () {
     if (
       this.state.prevQuery !== this.query ||
       this.state.prevPropsEnvironment !== this.environment ||
@@ -188,9 +198,12 @@ export default {
         ...state
       })
     }
-  },
-  beforeDestroy () {
-    this.state.queryFetcher.dispose()
+  } })) },
+  render (h) {
+    if (process.env.NODE_ENV !== 'production') {
+      require('relay-runtime/lib/deepFreeze')(this.state.renderProps)
+    }
+    return h(this.component)
   },
   created () {
     this.component = {
@@ -207,18 +220,7 @@ export default {
       }
     }
   },
-  render (h) {
-    if (process.env.NODE_ENV !== 'production') {
-      require('relay-runtime/lib/deepFreeze')(this.state.renderProps)
-    }
-    return h(this.component)
-  },
-  methods: {
-    setState (state) {
-      this.state = Object.freeze({
-        ...this.state,
-        ...state
-      })
-    }
+  beforeDestroy () {
+    this.state.queryFetcher.dispose()
   }
 }

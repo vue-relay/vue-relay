@@ -32,7 +32,24 @@ const createContainerWithFragments = function (fragments) {
         })
       }
     },
-    beforeUpdate () {
+    methods: {
+      setState (state) {
+        this.state = Object.freeze({
+          ...this.state,
+          ...state
+        })
+      },
+      _handleFragmentDataUpdate () {
+        this.setState({
+          data: this.state.resolver.resolve(),
+          relayProp: {
+            isLoading: this.state.resolver.isLoading(),
+            environment: this.state.relayProp.environment
+          }
+        })
+      }
+    },
+    watch: { ...Object.keys(fragments).map((key) => ({ [key]: function () {
       const {
         createFragmentSpecResolver,
         getDataIDsFromObject
@@ -85,26 +102,9 @@ const createContainerWithFragments = function (fragments) {
           })
         }
       }
-    },
+    } })) },
     beforeDestroy () {
       this.state.resolver.dispose()
-    },
-    methods: {
-      setState (state) {
-        this.state = Object.freeze({
-          ...this.state,
-          ...state
-        })
-      },
-      _handleFragmentDataUpdate () {
-        this.setState({
-          data: this.state.resolver.resolve(),
-          relayProp: {
-            isLoading: this.state.resolver.isLoading(),
-            environment: this.state.relayProp.environment
-          }
-        })
-      }
     }
   }
 }

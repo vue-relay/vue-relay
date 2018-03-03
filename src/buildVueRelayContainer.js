@@ -17,6 +17,11 @@ const buildVueRelayContainer = function (component, fragmentSpec, createContaine
   return {
     name: 'relay-context-consumer',
     inject: ['relay'],
+    render (h) {
+      return h(this.component, {
+        props: this.$attrs
+      })
+    },
     created () {
       const relay = assertRelayContext(this.relay)
       const { getFragment: getFragmentFromTag } = relay.environment.unstable_internal
@@ -27,6 +32,12 @@ const buildVueRelayContainer = function (component, fragmentSpec, createContaine
       this.component = {
         extends: createContainerWithFragments.call(this, fragments),
         props: Object.keys(fragments),
+        render (h) {
+          if (this.context) {
+            return h(this.component)
+          }
+          return this.component.render(h)
+        },
         created () {
           this.component = {
             name: 'relay-context-provider',
@@ -53,19 +64,8 @@ const buildVueRelayContainer = function (component, fragmentSpec, createContaine
               }))
             }
           }
-        },
-        render (h) {
-          if (this.context) {
-            return h(this.component)
-          }
-          return this.component.render(h)
         }
       }
-    },
-    render (h) {
-      return h(this.component, {
-        props: this.$attrs
-      })
     }
   }
 }

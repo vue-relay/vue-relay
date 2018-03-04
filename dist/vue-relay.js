@@ -68,16 +68,6 @@ var _extends = Object.assign || function (target) {
   return target;
 };
 
-var toConsumableArray = function (arr) {
-  if (Array.isArray(arr)) {
-    for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) arr2[i] = arr[i];
-
-    return arr2;
-  } else {
-    return Array.from(arr);
-  }
-};
-
 var invariant = require('fbjs/lib/invariant');
 
 var VueRelayQueryFetcher = function () {
@@ -432,17 +422,28 @@ var QueryRenderer = {
         prevQuery: this.query,
         queryFetcher: queryFetcher,
         retryCallbacks: retryCallbacks
-      }, state))
+      }, state)),
+      switch: true
     };
   },
 
+  computed: {
+    props: function props() {
+      var _this2 = this;
+
+      Object.keys(this.$props).forEach(function (key) {
+        return _this2[key];
+      });
+      return this.switch = !this.switch;
+    }
+  },
   methods: {
     setState: function setState(state) {
       this.state = Object.freeze(_extends({}, this.state, state));
     }
   },
-  watch: Object.assign.apply(Object, toConsumableArray(Object.keys(props).map(function (key) {
-    return defineProperty({}, key, function () {
+  watch: {
+    props: function props() {
       if (this.state.prevQuery !== this.query || this.state.prevPropsEnvironment !== this.environment || !areEqual(this.state.prevPropsVariables, this.variables)) {
         var state = fetchQueryAndComputeStateFromProps(this.$props, this.state.queryFetcher, this.state.retryCallbacks);
 
@@ -458,8 +459,8 @@ var QueryRenderer = {
           prevPropsVariables: this.variables
         }, state));
       }
-    });
-  }))),
+    }
+  },
   render: function render(h) {
     {
       require('relay-runtime/lib/deepFreeze')(this.state.renderProps);
@@ -467,7 +468,7 @@ var QueryRenderer = {
     return h(this.component);
   },
   created: function created() {
-    var _this2 = this;
+    var _this3 = this;
 
     this.component = {
       name: 'relay-context-provider',
@@ -479,7 +480,7 @@ var QueryRenderer = {
           props: {
             include: []
           }
-        }, _this2.$scopedSlots.default(_this2.state.renderProps));
+        }, _this3.$scopedSlots.default(_this3.state.renderProps));
       }
     };
   },
@@ -571,7 +572,7 @@ var invariant$2 = require('fbjs/lib/invariant');
 var _require = require('relay-runtime'),
     Observable = _require.Observable;
 
-var createContainerWithFragments = function createContainerWithFragments(fragments, taggedNode) {
+var createContainerWithFragments = function createContainerWithFragments(_fragments, taggedNode) {
   var relay = this.relay;
 
   return {
@@ -579,7 +580,7 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
     data: function data() {
       var createFragmentSpecResolver = relay.environment.unstable_internal.createFragmentSpecResolver;
 
-      var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+      var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
 
       return {
         // a.k.a this._relayContext in react-relay
@@ -598,10 +599,21 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
           localVariables: null,
           refetchSubscription: null,
           resolver: resolver
-        })
+        }),
+        switch: true
       };
     },
 
+    computed: {
+      fragments: function fragments() {
+        var _this = this;
+
+        Object.keys(_fragments).forEach(function (key) {
+          return _this[key];
+        });
+        return this.switch = !this.switch;
+      }
+    },
     methods: {
       setState: function setState(state) {
         this.state = Object.freeze(_extends({}, this.state, state));
@@ -620,7 +632,7 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
       _getFragmentVariables: function _getFragmentVariables() {
         var getVariablesFromObject = relay.environment.unstable_internal.getVariablesFromObject;
 
-        return getVariablesFromObject(relay.variables, fragments, this.$props);
+        return getVariablesFromObject(relay.variables, _fragments, this.$props);
       },
       _getQueryFetcher: function _getQueryFetcher() {
         if (!this.state.queryFetcher) {
@@ -629,7 +641,7 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
         return this.state.queryFetcher;
       },
       _refetch: function _refetch(refetchVariables, renderVariables, observerOrCallback, options) {
-        var _this = this;
+        var _this2 = this;
 
         var environment = relay.environment,
             rootVariables = relay.variables;
@@ -670,27 +682,27 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
           // TODO (T26430099): Cleanup old references
           preservePreviousReferences: true
         }).mergeMap(function (response) {
-          _this.context.relay.environment = relay.environment;
-          _this.context.relay.variables = fragmentVariables;
-          _this.state.resolver.setVariables(fragmentVariables);
+          _this2.context.relay.environment = relay.environment;
+          _this2.context.relay.variables = fragmentVariables;
+          _this2.state.resolver.setVariables(fragmentVariables);
           return Observable.create(function (sink) {
-            _this.setState({ data: _this.state.resolver.resolve() });
+            _this2.setState({ data: _this2.state.resolver.resolve() });
             sink.next();
             sink.complete();
           });
         }).finally(function () {
           // Finalizing a refetch should only clear this._refetchSubscription
           // if the finizing subscription is the most recent call.
-          if (_this.state.refetchSubscription === refetchSubscription) {
-            _this.state.refetchSubscription.unsubscribe();
-            _this.setState({
+          if (_this2.state.refetchSubscription === refetchSubscription) {
+            _this2.state.refetchSubscription.unsubscribe();
+            _this2.setState({
               refetchSubscription: null
             });
           }
         }).subscribe(_extends({}, observer, {
           start: function start(subscription) {
             refetchSubscription = subscription;
-            _this.setState({
+            _this2.setState({
               refetchSubscription: subscription
             });
             observer.start && observer.start(subscription);
@@ -716,15 +728,15 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
         }
       }
     },
-    watch: Object.assign.apply(Object, toConsumableArray(Object.keys(fragments).map(function (key) {
-      return defineProperty({}, key, function () {
+    watch: {
+      fragments: function fragments() {
         var _relay$environment$un = relay.environment.unstable_internal,
             createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
             getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
 
 
-        var prevIDs = getDataIDsFromObject(fragments, this.state.prevProps);
-        var nextIDs = getDataIDsFromObject(fragments, this.$props);
+        var prevIDs = getDataIDsFromObject(_fragments, this.state.prevProps);
+        var nextIDs = getDataIDsFromObject(_fragments, this.$props);
 
         // If the environment has changed or props point to new records then
         // previously fetched data and any pending fetches no longer apply:
@@ -737,7 +749,7 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
           this.context.relay.environment = relay.environment;
           this.context.relay.variables = relay.variables;
 
-          var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+          var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
 
           this.setState({
             prevProps: this.$props,
@@ -754,8 +766,8 @@ var createContainerWithFragments = function createContainerWithFragments(fragmen
         if (data !== this.state.data) {
           this.setState({ data: data });
         }
-      });
-    }))),
+      }
+    },
     beforeDestroy: function beforeDestroy() {
       this._release();
     }
@@ -845,10 +857,10 @@ var toObserver = function toObserver(observerOrCallback) {
   } : observerOrCallback || {};
 };
 
-var createContainerWithFragments$1 = function createContainerWithFragments(fragments, connectionConfig) {
+var createContainerWithFragments$1 = function createContainerWithFragments(_fragments, connectionConfig) {
   var relay = this.relay;
 
-  var metadata = findConnectionMetadata(fragments);
+  var metadata = findConnectionMetadata(_fragments);
 
   var getConnectionFromProps = connectionConfig.getConnectionFromProps || createGetConnectionFromProps(metadata);
 
@@ -862,7 +874,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
     data: function data() {
       var createFragmentSpecResolver = relay.environment.unstable_internal.createFragmentSpecResolver;
 
-      var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+      var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
 
       return {
         // a.k.a this._relayContext in react-relay
@@ -882,10 +894,21 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
           localVariables: null,
           refetchSubscription: null,
           resolver: resolver
-        })
+        }),
+        switch: true
       };
     },
 
+    computed: {
+      fragments: function fragments() {
+        var _this = this;
+
+        Object.keys(_fragments).forEach(function (key) {
+          return _this[key];
+        });
+        return this.switch = !this.switch;
+      }
+    },
     methods: {
       setState: function setState(state) {
         this.state = Object.freeze(_extends({}, this.state, state));
@@ -992,7 +1015,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
         return this.state.queryFetcher;
       },
       _fetchPage: function _fetchPage(paginatingVariables, observer, options, refetchVariables) {
-        var _this = this;
+        var _this2 = this;
 
         var environment = relay.environment;
         var _environment$unstable = environment.unstable_internal,
@@ -1001,7 +1024,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
             getVariablesFromObject = _environment$unstable.getVariablesFromObject;
 
         var props = _extends({}, this.$props, this.state.data);
-        var fragmentVariables = getVariablesFromObject(this.context.relay.variables, fragments, this.$props);
+        var fragmentVariables = getVariablesFromObject(this.context.relay.variables, _fragments, this.$props);
         fragmentVariables = _extends({}, fragmentVariables, refetchVariables);
         var fetchVariables = connectionConfig.getVariables(props, {
           count: paginatingVariables.count,
@@ -1026,12 +1049,12 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
         }
 
         var onNext = function onNext(payload, complete) {
-          _this.context.relay.environment = relay.environment;
-          _this.context.relay.variables = _extends({}, relay.variables, fragmentVariables);
+          _this2.context.relay.environment = relay.environment;
+          _this2.context.relay.variables = _extends({}, relay.variables, fragmentVariables);
 
-          var prevData = _this.state.resolver.resolve();
-          _this.state.resolver.setVariables(getFragmentVariables(fragmentVariables, paginatingVariables.totalCount));
-          var nextData = _this.state.resolver.resolve();
+          var prevData = _this2.state.resolver.resolve();
+          _this2.state.resolver.setVariables(getFragmentVariables(fragmentVariables, paginatingVariables.totalCount));
+          var nextData = _this2.state.resolver.resolve();
 
           // Workaround slightly different handling for connection in different
           // core implementations:
@@ -1043,15 +1066,15 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
           // resolved data.
           // TODO #14894725: remove PaginationContainer equal check
           if (!areEqual$2(prevData, nextData)) {
-            _this.setState({ data: nextData });
+            _this2.setState({ data: nextData });
           }
           complete();
         };
 
         var cleanup = function cleanup() {
-          if (_this.state.refetchSubscription === refetchSubscription) {
-            _this.state.refetchSubscription.unsubscribe();
-            _this.setState({
+          if (_this2.state.refetchSubscription === refetchSubscription) {
+            _this2.state.refetchSubscription.unsubscribe();
+            _this2.setState({
               refetchSubscription: null,
               isARequestInFlight: false
             });
@@ -1098,15 +1121,15 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
         }
       }
     },
-    watch: Object.assign.apply(Object, toConsumableArray(Object.keys(fragments).map(function (key) {
-      return defineProperty({}, key, function () {
+    watch: {
+      fragments: function fragments() {
         var _relay$environment$un = relay.environment.unstable_internal,
             createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
             getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
 
 
-        var prevIDs = getDataIDsFromObject(fragments, this.state.prevProps);
-        var nextIDs = getDataIDsFromObject(fragments, this.$props);
+        var prevIDs = getDataIDsFromObject(_fragments, this.state.prevProps);
+        var nextIDs = getDataIDsFromObject(_fragments, this.$props);
 
         // If the environment has changed or props point to new records then
         // previously fetched data and any pending fetches no longer apply:
@@ -1119,7 +1142,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
           this.context.relay.environment = relay.environment;
           this.context.relay.variables = relay.variables;
 
-          var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+          var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
 
           this.setState({
             prevProps: this.$props,
@@ -1136,8 +1159,8 @@ var createContainerWithFragments$1 = function createContainerWithFragments(fragm
         if (data !== this.state.data) {
           this.setState({ data: data });
         }
-      });
-    }))),
+      }
+    },
     beforeDestroy: function beforeDestroy() {
       this._release();
     }
@@ -1163,7 +1186,7 @@ var createPaginationContainer = function createPaginationContainer() {
 var areEqual$3 = require('fbjs/lib/areEqual');
 var invariant$4 = require('fbjs/lib/invariant');
 
-var createContainerWithFragments$2 = function createContainerWithFragments(fragments) {
+var createContainerWithFragments$2 = function createContainerWithFragments(_fragments) {
   var relay = this.relay;
 
   return {
@@ -1171,7 +1194,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
     data: function data() {
       var createFragmentSpecResolver = relay.environment.unstable_internal.createFragmentSpecResolver;
 
-      var resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+      var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
 
       return {
         state: Object.freeze({
@@ -1184,10 +1207,21 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
             environment: relay.environment
           },
           resolver: resolver
-        })
+        }),
+        switch: true
       };
     },
 
+    computed: {
+      fragments: function fragments() {
+        var _this = this;
+
+        Object.keys(_fragments).forEach(function (key) {
+          return _this[key];
+        });
+        return this.switch = !this.switch;
+      }
+    },
     methods: {
       setState: function setState(state) {
         this.state = Object.freeze(_extends({}, this.state, state));
@@ -1202,21 +1236,21 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
         });
       }
     },
-    watch: Object.assign.apply(Object, toConsumableArray(Object.keys(fragments).map(function (key) {
-      return defineProperty({}, key, function () {
+    watch: {
+      fragments: function fragments() {
         var _relay$environment$un = relay.environment.unstable_internal,
             createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
             getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
 
 
-        var prevIDs = getDataIDsFromObject(fragments, this.state.prevProps);
-        var nextIDs = getDataIDsFromObject(fragments, this.$props);
+        var prevIDs = getDataIDsFromObject(_fragments, this.state.prevProps);
+        var nextIDs = getDataIDsFromObject(_fragments, this.$props);
 
         var resolver = this.state.resolver;
 
         if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$3(prevIDs, nextIDs)) {
           resolver.dispose();
-          resolver = createFragmentSpecResolver(relay, this.$options.name, fragments, this.$props, this._handleFragmentDataUpdate);
+          resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
 
           this.setState({
             data: resolver.resolve(),
@@ -1246,8 +1280,8 @@ var createContainerWithFragments$2 = function createContainerWithFragments(fragm
             });
           }
         }
-      });
-    }))),
+      }
+    },
     beforeDestroy: function beforeDestroy() {
       this.state.resolver.dispose();
     }

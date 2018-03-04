@@ -162,7 +162,14 @@ export default {
         queryFetcher,
         retryCallbacks,
         ...state
-      })
+      }),
+      switch: true
+    }
+  },
+  computed: {
+    props () {
+      Object.keys(this.$props).forEach(key => this[key])
+      return (this.switch = !this.switch)
     }
   },
   methods: {
@@ -173,7 +180,7 @@ export default {
       })
     }
   },
-  watch: Object.assign(...Object.keys(props).map((key) => ({ [key]: function () {
+  watch: { props () {
     if (
       this.state.prevQuery !== this.query ||
       this.state.prevPropsEnvironment !== this.environment ||
@@ -198,7 +205,7 @@ export default {
         ...state
       })
     }
-  } }))),
+  } },
   render (h) {
     if (process.env.NODE_ENV !== 'production') {
       require('relay-runtime/lib/deepFreeze')(this.state.renderProps)

@@ -29,7 +29,14 @@ const createContainerWithFragments = function (fragments) {
             environment: relay.environment
           },
           resolver
-        })
+        }),
+        switch: true
+      }
+    },
+    computed: {
+      fragments () {
+        Object.keys(fragments).forEach(key => this[key])
+        return (this.switch = !this.switch)
       }
     },
     methods: {
@@ -49,7 +56,7 @@ const createContainerWithFragments = function (fragments) {
         })
       }
     },
-    watch: Object.assign(...Object.keys(fragments).map((key) => ({ [key]: function () {
+    watch: { fragments () {
       const {
         createFragmentSpecResolver,
         getDataIDsFromObject
@@ -102,7 +109,7 @@ const createContainerWithFragments = function (fragments) {
           })
         }
       }
-    } }))),
+    } },
     beforeDestroy () {
       this.state.resolver.dispose()
     }

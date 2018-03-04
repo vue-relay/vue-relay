@@ -40,7 +40,14 @@ const createContainerWithFragments = function (fragments, taggedNode) {
           localVariables: null,
           refetchSubscription: null,
           resolver
-        })
+        }),
+        switch: true
+      }
+    },
+    computed: {
+      fragments () {
+        Object.keys(fragments).forEach(key => this[key])
+        return (this.switch = !this.switch)
       }
     },
     methods: {
@@ -175,7 +182,7 @@ const createContainerWithFragments = function (fragments, taggedNode) {
         }
       }
     },
-    watch: Object.assign(...Object.keys(fragments).map((key) => ({ [key]: function () {
+    watch: { fragments () {
       const {
         createFragmentSpecResolver,
         getDataIDsFromObject
@@ -222,7 +229,7 @@ const createContainerWithFragments = function (fragments, taggedNode) {
       if (data !== this.state.data) {
         this.setState({ data })
       }
-    } }))),
+    } },
     beforeDestroy () {
       this._release()
     }

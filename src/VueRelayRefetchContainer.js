@@ -15,12 +15,15 @@ const createContainerWithFragments = function (fragments, taggedNode) {
     name: 'relay-refetch-container',
     data () {
       const { createFragmentSpecResolver } = relay.environment.unstable_internal
+      // Do not provide a subscription/callback here.
+      // It is possible for this render to be interrupted or aborted,
+      // In which case the subscription would cause a leak.
+      // We will add the subscription in componentDidMount().
       const resolver = createFragmentSpecResolver(
         relay,
         this.$options.name,
         fragments,
         this.$props,
-        this._handleFragmentDataUpdate
       )
 
       return {
@@ -31,12 +34,18 @@ const createContainerWithFragments = function (fragments, taggedNode) {
             variables: relay.variables
           }
         }),
+        prevState: Object.freeze({
+          resolver
+        }),
         state: Object.freeze({
           data: resolver.resolve(),
           prevProps: this.$props,
           relayEnvironment: relay.environment,
           relayVariables: relay.variables,
-          relayProp: this._buildRelayProp(relay),
+          relayProp: {
+            environment: relay.environment,
+            refetch: this._refetch
+          },
           localVariables: null,
           refetchSubscription: null,
           resolver
@@ -57,16 +66,26 @@ const createContainerWithFragments = function (fragments, taggedNode) {
           ...state
         })
       },
-      _buildRelayProp (relay) {
-        return {
-          environment: relay.environment,
-          refetch: this._refetch
+      _subscribeToNewResolver () {
+        const { data, resolver } = this.state
+
+        // Event listeners are only safe to add during the commit phase,
+        // So they won't leak if render is interrupted or errors.
+        resolver.setCallback(this._handleFragmentDataUpdate)
+
+        // External values could change between render and commit.
+        // Check for this case, even though it requires an extra store read.
+        const maybeNewData = resolver.resolve()
+        if (data !== maybeNewData) {
+          this.setState({ data: maybeNewData })
         }
       },
       _handleFragmentDataUpdate () {
-        this.setState({
-          data: this.state.resolver.resolve()
-        })
+        if (this.state.resolver === this.prevState.resolver) {
+          this.setState({
+            data: this.state.resolver.resolve()
+          })
+        }
       },
       _getFragmentVariables () {
         const {
@@ -86,10 +105,6 @@ const createContainerWithFragments = function (fragments, taggedNode) {
       },
       _refetch (refetchVariables, renderVariables, observerOrCallback, options) {
         const { environment, variables: rootVariables } = relay
-        const {
-          createOperationSelector,
-          getRequest
-        } = environment.unstable_internal
         let fetchVariables =
           typeof refetchVariables === 'function'
             ? refetchVariables(this._getFragmentVariables())
@@ -98,9 +113,7 @@ const createContainerWithFragments = function (fragments, taggedNode) {
         const fragmentVariables = renderVariables
           ? { ...rootVariables, ...renderVariables }
           : fetchVariables
-        this.setState({ localVariables: fetchVariables })
-
-        const cacheConfig = options ? { force: !!options.force } : void 0
+        const cacheConfig = options ? { force: !!options.force } : undefined
 
         const observer =
           typeof observerOrCallback === 'function'
@@ -112,18 +125,22 @@ const createContainerWithFragments = function (fragments, taggedNode) {
             }
             : observerOrCallback || ({})
 
-        const request = getRequest(taggedNode)
-        const operation = createOperationSelector(request, fetchVariables)
+        const {
+          createOperationSelector,
+          getRequest
+        } = relay.environment.unstable_internal
+        const query = getRequest(taggedNode)
+        const operation = createOperationSelector(query, fetchVariables)
+
+        // TODO: T26288752 find a better way
+        this.setState({ localVariables: fetchVariables })
 
         // Cancel any previously running refetch.
-        if (this.state.refetchSubscription) {
-          this.state.refetchSubscription.unsubscribe()
-        }
+        this.state.refetchSubscription && this.state.refetchSubscription.unsubscribe()
 
         // Declare refetchSubscription before assigning it in .start(), since
         // synchronous completion may call callbacks .subscribe() returns.
         let refetchSubscription
-
         this._getQueryFetcher()
           .execute({
             environment,
@@ -133,6 +150,8 @@ const createContainerWithFragments = function (fragments, taggedNode) {
             preservePreviousReferences: true
           })
           .mergeMap(response => {
+            // Child containers rely on context.relay being mutated (for gDSFP).
+            // TODO: T26288752 find a better way
             this.context.relay.environment = relay.environment
             this.context.relay.variables = fragmentVariables
             this.state.resolver.setVariables(fragmentVariables)
@@ -146,7 +165,6 @@ const createContainerWithFragments = function (fragments, taggedNode) {
             // Finalizing a refetch should only clear this._refetchSubscription
             // if the finizing subscription is the most recent call.
             if (this.state.refetchSubscription === refetchSubscription) {
-              this.state.refetchSubscription.unsubscribe()
               this.setState({
                 refetchSubscription: null
               })
@@ -168,18 +186,6 @@ const createContainerWithFragments = function (fragments, taggedNode) {
             refetchSubscription && refetchSubscription.unsubscribe()
           }
         }
-      },
-      _release () {
-        this.state.resolver.dispose()
-        if (this.state.refetchSubscription) {
-          this.state.refetchSubscription.unsubscribe()
-          this.setState({
-            refetchSubscription: null
-          })
-        }
-        if (this.state.queryFetcher) {
-          this.state.queryFetcher.dispose()
-        }
       }
     },
     watch: { fragments () {
@@ -191,6 +197,8 @@ const createContainerWithFragments = function (fragments, taggedNode) {
       const prevIDs = getDataIDsFromObject(fragments, this.state.prevProps)
       const nextIDs = getDataIDsFromObject(fragments, this.$props)
 
+      let resolver = this.state.resolver
+
       // If the environment has changed or props point to new records then
       // previously fetched data and any pending fetches no longer apply:
       // - Existing references are on the old environment.
@@ -201,12 +209,13 @@ const createContainerWithFragments = function (fragments, taggedNode) {
         this.state.relayVariables !== relay.variables ||
         !areEqual(prevIDs, nextIDs)
       ) {
-        this._release()
+        this.prevState = Object.freeze({ resolver })
 
+        // Child containers rely on context.relay being mutated (for gDSFP).
         this.context.relay.environment = relay.environment
         this.context.relay.variables = relay.variables
 
-        const resolver = createFragmentSpecResolver(
+        resolver = createFragmentSpecResolver(
           relay,
           this.$options.name,
           fragments,
@@ -218,20 +227,38 @@ const createContainerWithFragments = function (fragments, taggedNode) {
           prevProps: this.$props,
           relayEnvironment: relay.environment,
           relayVariables: relay.variables,
-          relayProp: this._buildRelayProp(relay),
+          relayProp: {
+            environment: relay.environment,
+            refetch: this._refetch
+          },
           localVariables: null,
           resolver
         })
       } else if (!this.state.localVariables) {
-        this.state.resolver.setProps(this.$props)
+        resolver.setProps(this.$props)
       }
-      const data = this.state.resolver.resolve()
+      const data = resolver.resolve()
       if (data !== this.state.data) {
         this.setState({ data })
       }
     } },
+    mounted () {
+      this._subscribeToNewResolver()
+    },
+    updated () {
+      if (this.state.resolver !== this.prevState.resolver) {
+        this.prevState.resolver.dispose()
+        this.prevState = Object.freeze({ resolver: this.state.resolver })
+        this.state.queryFetcher && this.state.queryFetcher.dispose()
+        this.state.refetchSubscription && this.state.refetchSubscription.unsubscribe()
+
+        this._subscribeToNewResolver()
+      }
+    },
     beforeDestroy () {
-      this._release()
+      this.state.resolver.dispose()
+      this.state.queryFetcher && this.state.queryFetcher.dispose()
+      this.state.refetchSubscription && this.state.refetchSubscription.unsubscribe()
     }
   }
 }

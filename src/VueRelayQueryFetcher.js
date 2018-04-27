@@ -7,7 +7,9 @@ export default class VueRelayQueryFetcher {
     // this._rootSubscription
     this._selectionReferences = []
     // this._snapshot
+    // this._error
     // this._cacheSelectionReference
+    this._callOnDataChangeWhenSet = false
   }
 
   lookupInStore (environment, operation) {
@@ -28,7 +30,7 @@ export default class VueRelayQueryFetcher {
         const operationForPayload = createOperationSelector(
           operation.node,
           payload.variables,
-          payload.operation
+          payload.operation,
         )
         nextReferences.push(environment.retain(operationForPayload.root))
         return payload
@@ -38,7 +40,7 @@ export default class VueRelayQueryFetcher {
           // We may have partially fulfilled the request, so let the next request
           // or the unmount dispose of the references.
           this._selectionReferences = this._selectionReferences.concat(
-            nextReferences
+            nextReferences,
           )
         },
         complete: () => {
@@ -46,17 +48,37 @@ export default class VueRelayQueryFetcher {
             this._disposeSelectionReferences()
           }
           this._selectionReferences = this._selectionReferences.concat(
-            nextReferences
+            nextReferences,
           )
         },
         unsubscribe: () => {
           // Let the next request or the unmount code dispose of the references.
           // We may have partially fulfilled the request.
           this._selectionReferences = this._selectionReferences.concat(
-            nextReferences
+            nextReferences,
           )
         }
       })
+  }
+
+  setOnDataChange (onDataChange) {
+    invariant(
+      this._fetchOptions,
+      'RelayQueryFetcher: `setOnDataChange` should have been called after having called `fetch`',
+    )
+
+    // Mutate the most recent fetchOptions in place,
+    // So that in-progress requests can access the updated callback.
+    this._fetchOptions.onDataChange = onDataChange
+
+    if (this._callOnDataChangeWhenSet && typeof onDataChange === 'function') {
+      this._callOnDataChangeWhenSet = false
+      if (this._error != null) {
+        onDataChange({ error: this._error })
+      } else if (this._snapshot != null) {
+        onDataChange({ snapshot: this._snapshot })
+      }
+    }
   }
 
   /**
@@ -69,7 +91,7 @@ export default class VueRelayQueryFetcher {
    * and then subsequently whenever the data changes.
    */
   fetch (fetchOptions) {
-    const { cacheConfig, environment, onDataChange, operation } = fetchOptions
+    const { cacheConfig, environment, operation } = fetchOptions
     let fetchHasReturned = false
     let error
 
@@ -86,15 +108,36 @@ export default class VueRelayQueryFetcher {
       })
       .subscribe({
         next: () => {
+          const onDataChange = this._fetchOptions
+            ? this._fetchOptions.onDataChange
+            : null
+
+          // If we received a response when we didn't have a change callback,
+          // Make a note that to notify the callback when it's later added.
+          this._callOnDataChangeWhenSet = typeof onDataChange !== 'function'
+          this._error = null
+
           // Only notify of the first result if `next` is being called **asynchronously**
           // (i.e. after `fetch` has returned).
           this._onQueryDataAvailable({ notifyFirstResult: fetchHasReturned })
         },
         error: err => {
+          const onDataChange = this._fetchOptions
+            ? this._fetchOptions.onDataChange
+            : null
+
+          // If we received a response when we didn't have a change callback,
+          // Make a note that to notify the callback when it's later added.
+          this._callOnDataChangeWhenSet = typeof onDataChange !== 'function'
+          this._error = err
+          this._snapshot = null
+
           // Only notify of error if `error` is being called **asynchronously**
           // (i.e. after `fetch` has returned).
           if (fetchHasReturned) {
-            onDataChange({ error: err })
+            if (typeof onDataChange === 'function') {
+              onDataChange({ error: err })
+            }
           } else {
             error = err
           }
@@ -108,9 +151,11 @@ export default class VueRelayQueryFetcher {
     }
 
     fetchHasReturned = true
+
     if (error) {
       throw error
     }
+
     return this._snapshot
   }
 
@@ -128,6 +173,7 @@ export default class VueRelayQueryFetcher {
   }
 
   _disposeRequest () {
+    this._error = null
     this._snapshot = null
 
     // order is important, dispose of pendingFetch before selectionReferences
@@ -159,7 +205,7 @@ export default class VueRelayQueryFetcher {
   _onQueryDataAvailable ({ notifyFirstResult }) {
     invariant(
       this._fetchOptions,
-      'RelayQueryFetcher: `_onQueryDataAvailable` should have been called after having called `fetch`'
+      'RelayQueryFetcher: `_onQueryDataAvailable` should have been called after having called `fetch`',
     )
     const { environment, onDataChange, operation } = this._fetchOptions
 
@@ -169,14 +215,25 @@ export default class VueRelayQueryFetcher {
     if (this._snapshot) {
       return
     }
+
     this._snapshot = environment.lookup(operation.fragment)
 
     // Subscribe to changes in the data of the root fragment
-    this._rootSubscription = environment.subscribe(this._snapshot, snapshot =>
-      onDataChange({ snapshot })
-    )
+    this._rootSubscription = environment.subscribe(this._snapshot, snapshot => {
+      // Read from this._fetchOptions in case onDataChange() was lazily added.
+      if (this._fetchOptions != null) {
+        const maybeNewOnDataChange = this._fetchOptions.onDataChange
+        if (typeof maybeNewOnDataChange === 'function') {
+          maybeNewOnDataChange({ snapshot })
+        }
+      }
+    })
 
-    if (this._snapshot && notifyFirstResult) {
+    if (
+      this._snapshot &&
+      notifyFirstResult &&
+      typeof onDataChange === 'function'
+    ) {
       onDataChange({ snapshot: this._snapshot })
     }
   }

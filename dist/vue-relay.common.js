@@ -1,5 +1,5 @@
 /**
- * vue-relay v1.5.5
+ * vue-relay v1.6.0
  * (c) 2018 なつき
  * @license BSD-2-Clause
  */
@@ -75,7 +75,9 @@ var VueRelayQueryFetcher = function () {
     // this._rootSubscription
     this._selectionReferences = [];
     // this._snapshot
+    // this._error
     // this._cacheSelectionReference
+    this._callOnDataChangeWhenSet = false;
   }
 
   createClass(VueRelayQueryFetcher, [{
@@ -124,6 +126,24 @@ var VueRelayQueryFetcher = function () {
         }
       });
     }
+  }, {
+    key: 'setOnDataChange',
+    value: function setOnDataChange(onDataChange) {
+      invariant(this._fetchOptions, 'RelayQueryFetcher: `setOnDataChange` should have been called after having called `fetch`');
+
+      // Mutate the most recent fetchOptions in place,
+      // So that in-progress requests can access the updated callback.
+      this._fetchOptions.onDataChange = onDataChange;
+
+      if (this._callOnDataChangeWhenSet && typeof onDataChange === 'function') {
+        this._callOnDataChangeWhenSet = false;
+        if (this._error != null) {
+          onDataChange({ error: this._error });
+        } else if (this._snapshot != null) {
+          onDataChange({ snapshot: this._snapshot });
+        }
+      }
+    }
 
     /**
      * `fetch` fetches the data for the given operation.
@@ -142,7 +162,6 @@ var VueRelayQueryFetcher = function () {
 
       var cacheConfig = fetchOptions.cacheConfig,
           environment = fetchOptions.environment,
-          onDataChange = fetchOptions.onDataChange,
           operation = fetchOptions.operation;
 
       var fetchHasReturned = false;
@@ -159,15 +178,32 @@ var VueRelayQueryFetcher = function () {
         _this2._pendingRequest = null;
       }).subscribe({
         next: function next() {
+          var onDataChange = _this2._fetchOptions ? _this2._fetchOptions.onDataChange : null;
+
+          // If we received a response when we didn't have a change callback,
+          // Make a note that to notify the callback when it's later added.
+          _this2._callOnDataChangeWhenSet = typeof onDataChange !== 'function';
+          _this2._error = null;
+
           // Only notify of the first result if `next` is being called **asynchronously**
           // (i.e. after `fetch` has returned).
           _this2._onQueryDataAvailable({ notifyFirstResult: fetchHasReturned });
         },
         error: function error(err) {
+          var onDataChange = _this2._fetchOptions ? _this2._fetchOptions.onDataChange : null;
+
+          // If we received a response when we didn't have a change callback,
+          // Make a note that to notify the callback when it's later added.
+          _this2._callOnDataChangeWhenSet = typeof onDataChange !== 'function';
+          _this2._error = err;
+          _this2._snapshot = null;
+
           // Only notify of error if `error` is being called **asynchronously**
           // (i.e. after `fetch` has returned).
           if (fetchHasReturned) {
-            onDataChange({ error: err });
+            if (typeof onDataChange === 'function') {
+              onDataChange({ error: err });
+            }
           } else {
             _error = err;
           }
@@ -181,9 +217,11 @@ var VueRelayQueryFetcher = function () {
       };
 
       fetchHasReturned = true;
+
       if (_error) {
         throw _error;
       }
+
       return this._snapshot;
     }
   }, {
@@ -201,6 +239,7 @@ var VueRelayQueryFetcher = function () {
   }, {
     key: '_disposeRequest',
     value: function _disposeRequest() {
+      this._error = null;
       this._snapshot = null;
 
       // order is important, dispose of pendingFetch before selectionReferences
@@ -236,6 +275,8 @@ var VueRelayQueryFetcher = function () {
   }, {
     key: '_onQueryDataAvailable',
     value: function _onQueryDataAvailable(_ref2) {
+      var _this3 = this;
+
       var notifyFirstResult = _ref2.notifyFirstResult;
 
       invariant(this._fetchOptions, 'RelayQueryFetcher: `_onQueryDataAvailable` should have been called after having called `fetch`');
@@ -251,14 +292,21 @@ var VueRelayQueryFetcher = function () {
       if (this._snapshot) {
         return;
       }
+
       this._snapshot = environment.lookup(operation.fragment);
 
       // Subscribe to changes in the data of the root fragment
       this._rootSubscription = environment.subscribe(this._snapshot, function (snapshot) {
-        return onDataChange({ snapshot: snapshot });
+        // Read from this._fetchOptions in case onDataChange() was lazily added.
+        if (_this3._fetchOptions != null) {
+          var maybeNewOnDataChange = _this3._fetchOptions.onDataChange;
+          if (typeof maybeNewOnDataChange === 'function') {
+            maybeNewOnDataChange({ snapshot: snapshot });
+          }
+        }
       });
 
-      if (this._snapshot && notifyFirstResult) {
+      if (this._snapshot && notifyFirstResult && typeof onDataChange === 'function') {
         onDataChange({ snapshot: this._snapshot });
       }
     }
@@ -269,132 +317,32 @@ var VueRelayQueryFetcher = function () {
 var areEqual = require('fbjs/lib/areEqual');
 var STORE_THEN_NETWORK = 'STORE_THEN_NETWORK';
 
-var getLoadingRenderProps = function getLoadingRenderProps() {
-  return {
-    error: null,
-    props: null, // `props: null` indicates that the data is being fetched (i.e. loading)
-    retry: null
-  };
-};
-
-var getEmptyRenderProps = function getEmptyRenderProps(_) {
-  return {
-    error: null,
-    props: {}, // `props: {}` indicates no data available
-    retry: null
-  };
-};
-
-var getRenderProps = function getRenderProps(error, snapshot, queryFetcher, retryCallbacks) {
-  return {
-    error: error,
-    props: snapshot ? snapshot.data : null,
-    retry: function retry() {
-      var syncSnapshot = queryFetcher.retry();
-      if (syncSnapshot) {
-        retryCallbacks.handleDataChange({ snapshot: syncSnapshot });
-      } else if (error) {
-        // If retrying after an error and no synchronous result available,
-        // reset the render props
-        retryCallbacks.handleRetryAfterError(error);
-      }
-    }
-  };
-};
-
-var fetchQueryAndComputeStateFromProps = function fetchQueryAndComputeStateFromProps(props, queryFetcher, retryCallbacks) {
-  var environment = props.environment,
-      query = props.query,
-      variables = props.variables;
-
-
-  if (query) {
-    var genericEnvironment = environment;
-
-    var _genericEnvironment$u = genericEnvironment.unstable_internal,
-        createOperationSelector = _genericEnvironment$u.createOperationSelector,
-        getRequest = _genericEnvironment$u.getRequest;
-
-    var request = getRequest(query);
-    var operation = createOperationSelector(request, variables);
-
-    try {
-      var storeSnapshot = props.dataFrom === STORE_THEN_NETWORK ? queryFetcher.lookupInStore(genericEnvironment, operation) : null;
-      var querySnapshot = queryFetcher.fetch({
-        cacheConfig: props.cacheConfig,
-        dataFrom: props.dataFrom,
-        environment: genericEnvironment,
-        onDataChange: retryCallbacks.handleDataChange,
-        operation: operation
-      });
-      // Use network data first, since it may be fresher
-      var snapshot = querySnapshot || storeSnapshot;
-      if (!snapshot) {
-        return {
-          relayContextEnvironment: environment,
-          relayContextVariables: operation.variables,
-          renderProps: getLoadingRenderProps()
-        };
-      }
-
-      return {
-        relayContextEnvironment: environment,
-        relayContextVariables: operation.variables,
-        renderProps: getRenderProps(null, snapshot, queryFetcher, retryCallbacks)
-      };
-    } catch (error) {
-      return {
-        relayContextEnvironment: environment,
-        relayContextVariables: operation.variables,
-        renderProps: getRenderProps(error, null, queryFetcher, retryCallbacks)
-      };
-    }
-  } else {
-    queryFetcher.dispose();
-
-    return {
-      relayContextEnvironment: environment,
-      relayContextVariables: variables,
-      renderProps: getEmptyRenderProps()
-    };
-  }
-};
-
-var props = {
-  cacheConfig: {},
-  dataFrom: {},
-  environment: {
-    required: true
-  },
-  query: {},
-  variables: {
-    type: Object,
-    default: function _default() {
-      return {};
-    }
-  }
-};
-
 var QueryRenderer = {
   name: 'relay-query-renderer',
-  props: props,
+  props: {
+    cacheConfig: {},
+    dataFrom: {},
+    environment: {
+      required: true
+    },
+    query: {},
+    variables: {
+      type: Object,
+      default: function _default() {
+        return {};
+      }
+    }
+  },
   data: function data() {
-    var _this = this;
-
-    var handleDataChange = function handleDataChange(_ref) {
-      var error = _ref.error,
-          snapshot = _ref.snapshot;
-
-      _this.setState({ renderProps: getRenderProps(error, snapshot, queryFetcher, retryCallbacks) });
-    };
-
-    var handleRetryAfterError = function handleRetryAfterError(_) {
-      _this.setState({ renderProps: getLoadingRenderProps() });
-    };
-
+    // Callbacks are attached to the current instance and shared with static
+    // lifecyles by bundling with state. This is okay to do because the
+    // callbacks don't change in reaction to props. However we should not
+    // "leak" them before mounting (since we would be unable to clean up). For
+    // that reason, we define them as null initially and fill them in after
+    // mounting to avoid leaking memory.
     var retryCallbacks = {
-      handleDataChange: handleDataChange,
-      handleRetryAfterError: handleRetryAfterError
+      handleDataChange: null,
+      handleRetryAfterError: null
     };
 
     var queryFetcher = new VueRelayQueryFetcher();
@@ -425,10 +373,10 @@ var QueryRenderer = {
 
   computed: {
     props: function props() {
-      var _this2 = this;
+      var _this = this;
 
       Object.keys(this.$props).forEach(function (key) {
-        return _this2[key];
+        return _this[key];
       });
       return this.switch = !this.switch;
     }
@@ -464,7 +412,7 @@ var QueryRenderer = {
     return h(this.component);
   },
   created: function created() {
-    var _this3 = this;
+    var _this2 = this;
 
     this.component = {
       name: 'relay-context-provider',
@@ -476,12 +424,140 @@ var QueryRenderer = {
           props: {
             include: []
           }
-        }, _this3.$scopedSlots.default(_this3.state.renderProps));
+        }, _this2.$scopedSlots.default(_this2.state.renderProps));
       }
     };
   },
+  mounted: function mounted() {
+    var _this3 = this;
+
+    var _state = this.state,
+        retryCallbacks = _state.retryCallbacks,
+        queryFetcher = _state.queryFetcher;
+
+
+    retryCallbacks.handleDataChange = function (params) {
+      var error = params.error == null ? null : params.error;
+      var snapshot = params.snapshot == null ? null : params.snapshot;
+
+      // Don't update state if nothing has changed.
+      if (snapshot !== _this3.state.snapshot || error !== _this3.state.error) {
+        _this3.setState({
+          renderProps: getRenderProps(error, snapshot, queryFetcher, retryCallbacks),
+          snapshot: snapshot
+        });
+      }
+    };
+
+    retryCallbacks.handleRetryAfterError = function (_) {
+      return _this3.setState({ renderProps: getLoadingRenderProps() });
+    };
+
+    // Re-initialize the ReactRelayQueryFetcher with callbacks.
+    // If data has changed since constructions, this will re-render.
+    if (this.query) {
+      queryFetcher.setOnDataChange(retryCallbacks.handleDataChange);
+    }
+  },
   beforeDestroy: function beforeDestroy() {
     this.state.queryFetcher.dispose();
+  }
+};
+
+var getLoadingRenderProps = function getLoadingRenderProps() {
+  return {
+    error: null,
+    props: null, // `props: null` indicates that the data is being fetched (i.e. loading)
+    retry: null
+  };
+};
+
+var getEmptyRenderProps = function getEmptyRenderProps() {
+  return {
+    error: null,
+    props: {}, // `props: {}` indicates no data available
+    retry: null
+  };
+};
+
+var getRenderProps = function getRenderProps(error, snapshot, queryFetcher, retryCallbacks) {
+  return {
+    error: error || null,
+    props: snapshot ? snapshot.data : null,
+    retry: function retry() {
+      var syncSnapshot = queryFetcher.retry();
+      if (syncSnapshot && typeof retryCallbacks.handleDataChange === 'function') {
+        retryCallbacks.handleDataChange({ snapshot: syncSnapshot });
+      } else if (error && typeof retryCallbacks.handleRetryAfterError === 'function') {
+        // If retrying after an error and no synchronous result available,
+        // reset the render props
+        retryCallbacks.handleRetryAfterError(error);
+      }
+    }
+  };
+};
+
+var fetchQueryAndComputeStateFromProps = function fetchQueryAndComputeStateFromProps(props, queryFetcher, retryCallbacks) {
+  var environment = props.environment,
+      query = props.query,
+      variables = props.variables;
+
+  if (query) {
+    var genericEnvironment = environment;
+
+    var _genericEnvironment$u = genericEnvironment.unstable_internal,
+        createOperationSelector = _genericEnvironment$u.createOperationSelector,
+        getRequest = _genericEnvironment$u.getRequest;
+
+    var request = getRequest(query);
+    var operation = createOperationSelector(request, variables);
+
+    try {
+      var storeSnapshot = props.dataFrom === STORE_THEN_NETWORK ? queryFetcher.lookupInStore(genericEnvironment, operation) : null;
+      var querySnapshot = queryFetcher.fetch({
+        cacheConfig: props.cacheConfig,
+        dataFrom: props.dataFrom,
+        environment: genericEnvironment,
+        onDataChange: retryCallbacks.handleDataChange,
+        operation: operation
+      });
+      // Use network data first, since it may be fresher
+      var snapshot = querySnapshot || storeSnapshot;
+      if (!snapshot) {
+        return {
+          error: null,
+          relayContextEnvironment: environment,
+          relayContextVariables: operation.variables,
+          renderProps: getLoadingRenderProps(),
+          snapshot: null
+        };
+      }
+
+      return {
+        error: null,
+        relayContextEnvironment: environment,
+        relayContextVariables: operation.variables,
+        renderProps: getRenderProps(null, snapshot, queryFetcher, retryCallbacks),
+        snapshot: snapshot
+      };
+    } catch (error) {
+      return {
+        error: error,
+        relayContextEnvironment: environment,
+        relayContextVariables: operation.variables,
+        renderProps: getRenderProps(error, null, queryFetcher, retryCallbacks),
+        snapshot: null
+      };
+    }
+  } else {
+    queryFetcher.dispose();
+
+    return {
+      error: null,
+      relayContextEnvironment: environment,
+      relayContextVariables: variables,
+      renderProps: getEmptyRenderProps()
+    };
   }
 };
 
@@ -575,8 +651,12 @@ var createContainerWithFragments = function createContainerWithFragments(_fragme
     name: 'relay-refetch-container',
     data: function data() {
       var createFragmentSpecResolver = relay.environment.unstable_internal.createFragmentSpecResolver;
+      // Do not provide a subscription/callback here.
+      // It is possible for this render to be interrupted or aborted,
+      // In which case the subscription would cause a leak.
+      // We will add the subscription in componentDidMount().
 
-      var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
+      var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props);
 
       return {
         // a.k.a this._relayContext in react-relay
@@ -586,12 +666,18 @@ var createContainerWithFragments = function createContainerWithFragments(_fragme
             variables: relay.variables
           }
         }),
+        prevState: Object.freeze({
+          resolver: resolver
+        }),
         state: Object.freeze({
           data: resolver.resolve(),
           prevProps: this.$props,
           relayEnvironment: relay.environment,
           relayVariables: relay.variables,
-          relayProp: this._buildRelayProp(relay),
+          relayProp: {
+            environment: relay.environment,
+            refetch: this._refetch
+          },
           localVariables: null,
           refetchSubscription: null,
           resolver: resolver
@@ -614,16 +700,29 @@ var createContainerWithFragments = function createContainerWithFragments(_fragme
       setState: function setState(state) {
         this.state = Object.freeze(_extends({}, this.state, state));
       },
-      _buildRelayProp: function _buildRelayProp(relay) {
-        return {
-          environment: relay.environment,
-          refetch: this._refetch
-        };
+      _subscribeToNewResolver: function _subscribeToNewResolver() {
+        var _state = this.state,
+            data = _state.data,
+            resolver = _state.resolver;
+
+        // Event listeners are only safe to add during the commit phase,
+        // So they won't leak if render is interrupted or errors.
+
+        resolver.setCallback(this._handleFragmentDataUpdate);
+
+        // External values could change between render and commit.
+        // Check for this case, even though it requires an extra store read.
+        var maybeNewData = resolver.resolve();
+        if (data !== maybeNewData) {
+          this.setState({ data: maybeNewData });
+        }
       },
       _handleFragmentDataUpdate: function _handleFragmentDataUpdate() {
-        this.setState({
-          data: this.state.resolver.resolve()
-        });
+        if (this.state.resolver === this.prevState.resolver) {
+          this.setState({
+            data: this.state.resolver.resolve()
+          });
+        }
       },
       _getFragmentVariables: function _getFragmentVariables() {
         var getVariablesFromObject = relay.environment.unstable_internal.getVariablesFromObject;
@@ -641,16 +740,11 @@ var createContainerWithFragments = function createContainerWithFragments(_fragme
 
         var environment = relay.environment,
             rootVariables = relay.variables;
-        var _environment$unstable = environment.unstable_internal,
-            createOperationSelector = _environment$unstable.createOperationSelector,
-            getRequest = _environment$unstable.getRequest;
 
         var fetchVariables = typeof refetchVariables === 'function' ? refetchVariables(this._getFragmentVariables()) : refetchVariables;
         fetchVariables = _extends({}, rootVariables, fetchVariables);
         var fragmentVariables = renderVariables ? _extends({}, rootVariables, renderVariables) : fetchVariables;
-        this.setState({ localVariables: fetchVariables });
-
-        var cacheConfig = options ? { force: !!options.force } : void 0;
+        var cacheConfig = options ? { force: !!options.force } : undefined;
 
         var observer = typeof observerOrCallback === 'function' ? {
           // callback is not exectued on complete or unsubscribe
@@ -659,18 +753,22 @@ var createContainerWithFragments = function createContainerWithFragments(_fragme
           error: observerOrCallback
         } : observerOrCallback || {};
 
-        var request = getRequest(taggedNode);
-        var operation = createOperationSelector(request, fetchVariables);
+        var _relay$environment$un = relay.environment.unstable_internal,
+            createOperationSelector = _relay$environment$un.createOperationSelector,
+            getRequest = _relay$environment$un.getRequest;
+
+        var query = getRequest(taggedNode);
+        var operation = createOperationSelector(query, fetchVariables);
+
+        // TODO: T26288752 find a better way
+        this.setState({ localVariables: fetchVariables });
 
         // Cancel any previously running refetch.
-        if (this.state.refetchSubscription) {
-          this.state.refetchSubscription.unsubscribe();
-        }
+        this.state.refetchSubscription && this.state.refetchSubscription.unsubscribe();
 
         // Declare refetchSubscription before assigning it in .start(), since
         // synchronous completion may call callbacks .subscribe() returns.
         var refetchSubscription = void 0;
-
         this._getQueryFetcher().execute({
           environment: environment,
           operation: operation,
@@ -678,6 +776,8 @@ var createContainerWithFragments = function createContainerWithFragments(_fragme
           // TODO (T26430099): Cleanup old references
           preservePreviousReferences: true
         }).mergeMap(function (response) {
+          // Child containers rely on context.relay being mutated (for gDSFP).
+          // TODO: T26288752 find a better way
           _this2.context.relay.environment = relay.environment;
           _this2.context.relay.variables = fragmentVariables;
           _this2.state.resolver.setVariables(fragmentVariables);
@@ -690,7 +790,6 @@ var createContainerWithFragments = function createContainerWithFragments(_fragme
           // Finalizing a refetch should only clear this._refetchSubscription
           // if the finizing subscription is the most recent call.
           if (_this2.state.refetchSubscription === refetchSubscription) {
-            _this2.state.refetchSubscription.unsubscribe();
             _this2.setState({
               refetchSubscription: null
             });
@@ -710,29 +809,19 @@ var createContainerWithFragments = function createContainerWithFragments(_fragme
             refetchSubscription && refetchSubscription.unsubscribe();
           }
         };
-      },
-      _release: function _release() {
-        this.state.resolver.dispose();
-        if (this.state.refetchSubscription) {
-          this.state.refetchSubscription.unsubscribe();
-          this.setState({
-            refetchSubscription: null
-          });
-        }
-        if (this.state.queryFetcher) {
-          this.state.queryFetcher.dispose();
-        }
       }
     },
     watch: {
       fragments: function fragments() {
-        var _relay$environment$un = relay.environment.unstable_internal,
-            createFragmentSpecResolver = _relay$environment$un.createFragmentSpecResolver,
-            getDataIDsFromObject = _relay$environment$un.getDataIDsFromObject;
+        var _relay$environment$un2 = relay.environment.unstable_internal,
+            createFragmentSpecResolver = _relay$environment$un2.createFragmentSpecResolver,
+            getDataIDsFromObject = _relay$environment$un2.getDataIDsFromObject;
 
 
         var prevIDs = getDataIDsFromObject(_fragments, this.state.prevProps);
         var nextIDs = getDataIDsFromObject(_fragments, this.$props);
+
+        var resolver = this.state.resolver;
 
         // If the environment has changed or props point to new records then
         // previously fetched data and any pending fetches no longer apply:
@@ -740,32 +829,51 @@ var createContainerWithFragments = function createContainerWithFragments(_fragme
         // - Existing references are based on old variables.
         // - Pending fetches are for the previous records.
         if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$1(prevIDs, nextIDs)) {
-          this._release();
+          this.prevState = Object.freeze({ resolver: resolver });
 
+          // Child containers rely on context.relay being mutated (for gDSFP).
           this.context.relay.environment = relay.environment;
           this.context.relay.variables = relay.variables;
 
-          var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
+          resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
 
           this.setState({
             prevProps: this.$props,
             relayEnvironment: relay.environment,
             relayVariables: relay.variables,
-            relayProp: this._buildRelayProp(relay),
+            relayProp: {
+              environment: relay.environment,
+              refetch: this._refetch
+            },
             localVariables: null,
             resolver: resolver
           });
         } else if (!this.state.localVariables) {
-          this.state.resolver.setProps(this.$props);
+          resolver.setProps(this.$props);
         }
-        var data = this.state.resolver.resolve();
+        var data = resolver.resolve();
         if (data !== this.state.data) {
           this.setState({ data: data });
         }
       }
     },
+    mounted: function mounted() {
+      this._subscribeToNewResolver();
+    },
+    updated: function updated() {
+      if (this.state.resolver !== this.prevState.resolver) {
+        this.prevState.resolver.dispose();
+        this.prevState = Object.freeze({ resolver: this.state.resolver });
+        this.state.queryFetcher && this.state.queryFetcher.dispose();
+        this.state.refetchSubscription && this.state.refetchSubscription.unsubscribe();
+
+        this._subscribeToNewResolver();
+      }
+    },
     beforeDestroy: function beforeDestroy() {
-      this._release();
+      this.state.resolver.dispose();
+      this.state.queryFetcher && this.state.queryFetcher.dispose();
+      this.state.refetchSubscription && this.state.refetchSubscription.unsubscribe();
     }
   };
 };
@@ -1032,22 +1140,23 @@ var createContainerWithFragments$1 = function createContainerWithFragments(_frag
         fetchVariables = _extends({}, fetchVariables, refetchVariables);
         this.setState({ localVariables: fetchVariables });
 
-        var cacheConfig = options ? { force: !!options.force } : void 0;
+        var cacheConfig = options ? { force: !!options.force } : undefined;
         if (cacheConfig && options && options.rerunParamExperimental) {
           cacheConfig.rerunParamExperimental = options.rerunParamExperimental;
         }
         var request = getRequest(connectionConfig.query);
         var operation = createOperationSelector(request, fetchVariables);
 
-        // Cancel any previously running refetch.
+        var refetchSubscription = null;
+
         if (this.state.refetchSubscription) {
           this.state.refetchSubscription.unsubscribe();
         }
 
         var onNext = function onNext(payload, complete) {
+          // Child containers rely on context.relay being mutated (for gDSFP).
           _this2.context.relay.environment = relay.environment;
           _this2.context.relay.variables = _extends({}, relay.variables, fragmentVariables);
-
           var prevData = _this2.state.resolver.resolve();
           _this2.state.resolver.setVariables(getFragmentVariables(fragmentVariables, paginatingVariables.totalCount));
           var nextData = _this2.state.resolver.resolve();
@@ -1069,7 +1178,6 @@ var createContainerWithFragments$1 = function createContainerWithFragments(_frag
 
         var cleanup = function cleanup() {
           if (_this2.state.refetchSubscription === refetchSubscription) {
-            _this2.state.refetchSubscription.unsubscribe();
             _this2.setState({
               refetchSubscription: null,
               isARequestInFlight: false
@@ -1078,7 +1186,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(_frag
         };
 
         this.setState({ isARequestInFlight: true });
-        var refetchSubscription = this._getQueryFetcher().execute({
+        refetchSubscription = this._getQueryFetcher().execute({
           environment: environment,
           operation: operation,
           cacheConfig: cacheConfig,
@@ -1189,10 +1297,17 @@ var createContainerWithFragments$2 = function createContainerWithFragments(_frag
     name: 'relay-fragment-container',
     data: function data() {
       var createFragmentSpecResolver = relay.environment.unstable_internal.createFragmentSpecResolver;
+      // Do not provide a subscription/callback here.
+      // It is possible for this render to be interrupted or aborted,
+      // In which case the subscription would cause a leak.
+      // We will add the subscription in componentDidMount().
 
-      var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
+      var resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props);
 
       return {
+        prevState: Object.freeze({
+          resolver: resolver
+        }),
         state: Object.freeze({
           data: resolver.resolve(),
           prevProps: this.$props,
@@ -1223,13 +1338,34 @@ var createContainerWithFragments$2 = function createContainerWithFragments(_frag
         this.state = Object.freeze(_extends({}, this.state, state));
       },
       _handleFragmentDataUpdate: function _handleFragmentDataUpdate() {
-        this.setState({
-          data: this.state.resolver.resolve(),
-          relayProp: {
-            isLoading: this.state.resolver.isLoading(),
-            environment: this.state.relayProp.environment
-          }
-        });
+        // If this event belongs to the current data source, update.
+        // Otherwise we should ignore it.
+        if (this.state.resolver === this.prevState.resolver) {
+          this.setState({
+            data: this.state.resolver.resolve(),
+            relayProp: {
+              isLoading: this.state.resolver.isLoading(),
+              environment: this.state.relayProp.environment
+            }
+          });
+        }
+      },
+      _subscribeToNewResolver: function _subscribeToNewResolver() {
+        var _state = this.state,
+            data = _state.data,
+            resolver = _state.resolver;
+
+        // Event listeners are only safe to add during the commit phase,
+        // So they won't leak if render is interrupted or errors.
+
+        resolver.setCallback(this._handleFragmentDataUpdate);
+
+        // External values could change between render and commit.
+        // Check for this case, even though it requires an extra store read.
+        var maybeNewData = resolver.resolve();
+        if (data !== maybeNewData) {
+          this.setState({ data: maybeNewData });
+        }
       }
     },
     watch: {
@@ -1244,9 +1380,19 @@ var createContainerWithFragments$2 = function createContainerWithFragments(_frag
 
         var resolver = this.state.resolver;
 
+        // If the environment has changed or props point to new records then
+        // previously fetched data and any pending fetches no longer apply:
+        // - Existing references are on the old environment.
+        // - Existing references are based on old variables.
+        // - Pending fetches are for the previous records.
         if (this.state.relayEnvironment !== relay.environment || this.state.relayVariables !== relay.variables || !areEqual$3(prevIDs, nextIDs)) {
-          resolver.dispose();
-          resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props, this._handleFragmentDataUpdate);
+          this.prevState = Object.freeze({ resolver: resolver });
+
+          // Do not provide a subscription/callback here.
+          // It is possible for this render to be interrupted or aborted,
+          // In which case the subscription would cause a leak.
+          // We will add the subscription in componentDidUpdate().
+          resolver = createFragmentSpecResolver(relay, this.$options.name, _fragments, this.$props);
 
           this.setState({
             data: resolver.resolve(),
@@ -1276,6 +1422,17 @@ var createContainerWithFragments$2 = function createContainerWithFragments(_frag
             });
           }
         }
+      }
+    },
+    mounted: function mounted() {
+      this._subscribeToNewResolver();
+    },
+    updated: function updated() {
+      if (this.state.resolver !== this.prevState.resolver) {
+        this.prevState.resolver.dispose();
+        this.prevState = Object.freeze({ resolver: this.state.resolver });
+
+        this._subscribeToNewResolver();
       }
     },
     beforeDestroy: function beforeDestroy() {

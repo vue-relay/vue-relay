@@ -201,7 +201,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
           this.$options.name,
           EDGES,
           PAGE_INFO,
-          connectionData
+          connectionData,
         )
         const edges = connectionData[EDGES]
         const pageInfo = connectionData[PAGE_INFO]
@@ -214,7 +214,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
             'to return an object with %s: Array, got `%s`.',
           this.$options.name,
           EDGES,
-          edges
+          edges,
         )
         invariant(
           typeof pageInfo === 'object',
@@ -222,7 +222,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
             'to return an object with %s: Object, got `%s`.',
           this.$options.name,
           PAGE_INFO,
-          pageInfo
+          pageInfo,
         )
         const hasMore =
           direction === FORWARD
@@ -243,7 +243,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
             direction === FORWARD ? HAS_NEXT_PAGE : HAS_PREV_PAGE,
             hasMore,
             direction === FORWARD ? END_CURSOR : START_CURSOR,
-            cursor
+            cursor,
           )
           return null
         }
@@ -274,7 +274,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
           paginatingVariables,
           toObserver(observerOrCallback),
           { force: true },
-          refetchVariables
+          refetchVariables,
         )
 
         return { dispose: fetch.unsubscribe }
@@ -296,7 +296,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
           cursor,
           'RelayPaginationContainer: Cannot `loadMore` without valid `%s` (got `%s`)',
           direction === FORWARD ? END_CURSOR : START_CURSOR,
-          cursor
+          cursor,
         )
         const paginatingVariables = {
           count: pageSize,
@@ -326,7 +326,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         let fragmentVariables = getVariablesFromObject(
           this.context.relay.variables,
           fragments,
-          this.$props
+          this.$props,
         )
         fragmentVariables = { ...fragmentVariables, ...refetchVariables }
         let fetchVariables = connectionConfig.getVariables(
@@ -336,14 +336,14 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
             cursor: paginatingVariables.cursor
           },
           // Pass the variables used to fetch the fragments initially
-          fragmentVariables
+          fragmentVariables,
         )
         invariant(
           typeof fetchVariables === 'object' && fetchVariables !== null,
           'RelayPaginationContainer: Expected `getVariables()` to ' +
             'return an object, got `%s` in `%s`.',
           fetchVariables,
-          this.$options.name
+          this.$options.name,
         )
         fetchVariables = {
           ...fetchVariables,
@@ -351,31 +351,34 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         }
         this.setState({ localVariables: fetchVariables })
 
-        const cacheConfig = options ? { force: !!options.force } : void 0
+        const cacheConfig = options
+          ? { force: !!options.force }
+          : undefined
         if (cacheConfig && options && options.rerunParamExperimental) {
           cacheConfig.rerunParamExperimental = options.rerunParamExperimental
         }
         const request = getRequest(connectionConfig.query)
         const operation = createOperationSelector(request, fetchVariables)
 
-        // Cancel any previously running refetch.
+        let refetchSubscription = null
+
         if (this.state.refetchSubscription) {
           this.state.refetchSubscription.unsubscribe()
         }
 
         const onNext = (payload, complete) => {
+          // Child containers rely on context.relay being mutated (for gDSFP).
           this.context.relay.environment = relay.environment
           this.context.relay.variables = {
             ...relay.variables,
             ...fragmentVariables
           }
-
           const prevData = this.state.resolver.resolve()
           this.state.resolver.setVariables(
             getFragmentVariables(
               fragmentVariables,
-              paginatingVariables.totalCount
-            )
+              paginatingVariables.totalCount,
+            ),
           )
           const nextData = this.state.resolver.resolve()
 
@@ -396,7 +399,6 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
 
         const cleanup = () => {
           if (this.state.refetchSubscription === refetchSubscription) {
-            this.state.refetchSubscription.unsubscribe()
             this.setState({
               refetchSubscription: null,
               isARequestInFlight: false
@@ -405,7 +407,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         }
 
         this.setState({ isARequestInFlight: true })
-        const refetchSubscription = this._getQueryFetcher()
+        refetchSubscription = this._getQueryFetcher()
           .execute({
             environment,
             operation,
@@ -418,7 +420,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
                 sink.next() // pass void to public observer's `next`
                 sink.complete()
               })
-            })
+            }),
           )
           // use do instead of finally so that observer's `complete` fires after cleanup
           .do({

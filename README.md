@@ -21,7 +21,7 @@ yarn add vue vue-relay
 Relay Modern requires a Babel plugin to convert GraphQL to runtime artifacts:
 
 ``` sh
-yarn add --dev babel-plugin-relay
+yarn add --dev babel-plugin-relay graphql
 ```
 
 Add `"relay"` to the list of plugins your `.babelrc` file:
@@ -41,7 +41,7 @@ Please note that the "relay" plugin should run before other plugins or presets t
 Relay's ahead-of-time compilation requires the [Relay Compiler](https://facebook.github.io/relay/docs/en/graphql-in-relay.html#relay-compiler.html), which you can install via `yarn` or `npm`:
 
 ``` sh
-yarn add --dev relay-compiler
+yarn add --dev relay-compiler graphql
 ```
 
 This installs the bin script `relay-compiler` in your node_modules folder. It's recommended to run this from a `yarn/npm` script by adding a script to your `package.json` file:

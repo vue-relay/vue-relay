@@ -1,22 +1,34 @@
 import VueRelayQueryFetcher from './VueRelayQueryFetcher'
 import buildVueRelayContainer from './buildVueRelayContainer'
+import { assertRelayContext } from './RelayContext'
+import {
+  getComponentName,
+  getContainerName
+} from './VueRelayContainerUtils'
 
-const areEqual = require('fbjs/lib/areEqual')
-const invariant = require('fbjs/lib/invariant')
-const warning = require('fbjs/lib/warning')
-
-const {
+import areEqual from 'fbjs/lib/areEqual'
+import forEachObject from 'fbjs/lib/forEachObject'
+import invariant from 'fbjs/lib/invariant'
+import warning from 'fbjs/lib/warning'
+import {
   ConnectionInterface,
-  Observable
-} = require('relay-runtime')
+  Observable,
+  createFragmentSpecResolver,
+  createOperationDescriptor,
+  getDataIDsFromObject,
+  getFragmentOwners,
+  getRequest,
+  getVariablesFromObject,
+  isScalarAndEqual
+} from 'relay-runtime'
 
 const FORWARD = 'forward'
 
-const createGetConnectionFromProps = function (metadata) {
+function createGetConnectionFromProps (metadata) {
   const path = metadata.path
   invariant(
     path,
-    'RelayPaginationContainer: Unable to synthesize a ' +
+    'VueRelayPaginationContainer: Unable to synthesize a ' +
       'getConnectionFromProps function.'
   )
   return props => {
@@ -31,11 +43,13 @@ const createGetConnectionFromProps = function (metadata) {
   }
 }
 
-const createGetFragmentVariables = function (metadata) {
+function createGetFragmentVariables (
+  metadata
+) {
   const countVariable = metadata.count
   invariant(
     countVariable,
-    'RelayPaginationContainer: Unable to synthesize a ' +
+    'VueRelayPaginationContainer: Unable to synthesize a ' +
       'getFragmentVariables function.'
   )
   return (prevVars, totalCount) => ({
@@ -44,12 +58,13 @@ const createGetFragmentVariables = function (metadata) {
   })
 }
 
-const findConnectionMetadata = function (fragments) {
+function findConnectionMetadata (fragments) {
   let foundConnectionMetadata = null
   let isRelayModern = false
   for (const fragmentName in fragments) {
     const fragment = fragments[fragmentName]
-    const connectionMetadata = fragment.metadata && fragment.metadata.connection
+    const connectionMetadata = (fragment.metadata &&
+      fragment.metadata.connection)
     // HACK: metadata is always set to `undefined` in classic. In modern, even
     // if empty, it is set to null (never undefined). We use that knowlege to
     // check if we're dealing with classic or modern
@@ -59,14 +74,14 @@ const findConnectionMetadata = function (fragments) {
     if (connectionMetadata) {
       invariant(
         connectionMetadata.length === 1,
-        'RelayPaginationContainer: Only a single @connection is ' +
+        'VueRelayPaginationContainer: Only a single @connection is ' +
           'supported, `%s` has %s.',
         fragmentName,
         connectionMetadata.length
       )
       invariant(
         !foundConnectionMetadata,
-        'RelayPaginationContainer: Only a single fragment with ' +
+        'VueRelayPaginationContainer: Only a single fragment with ' +
           '@connection is supported.'
       )
       foundConnectionMetadata = {
@@ -77,25 +92,26 @@ const findConnectionMetadata = function (fragments) {
   }
   invariant(
     !isRelayModern || foundConnectionMetadata !== null,
-    'RelayPaginationContainer: A @connection directive must be present.'
+    'VueRelayPaginationContainer: A @connection directive must be present.'
   )
-  return foundConnectionMetadata || {}
+  return foundConnectionMetadata || ({})
 }
 
-const toObserver = function (observerOrCallback) {
+function toObserver (observerOrCallback) {
   return typeof observerOrCallback === 'function'
     ? {
       error: observerOrCallback,
       complete: observerOrCallback,
-      unsubscribe: subscription => {
+      unsubscribe: _ => {
         typeof observerOrCallback === 'function' && observerOrCallback()
       }
     }
-    : observerOrCallback || {}
+    : observerOrCallback || ({})
 }
 
-const createContainerWithFragments = function (fragments, connectionConfig) {
-  const relay = this.relay
+const createContainerWithFragments = function (component, fragments, connectionConfig) {
+  const componentName = getComponentName(component)
+  const containerName = getContainerName(component) + '-pagination-container'
 
   const metadata = findConnectionMetadata(fragments)
 
@@ -106,7 +122,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
   const direction = connectionConfig.direction || metadata.direction
   invariant(
     direction,
-    'RelayPaginationContainer: Unable to infer direction of the ' +
+    'VueRelayPaginationContainer: Unable to infer direction of the ' +
       'connection, possibly because both first and last are provided.'
   )
 
@@ -115,70 +131,117 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
     createGetFragmentVariables(metadata)
 
   return {
-    name: 'relay-pagination-container',
+    name: containerName,
     data () {
-      const { createFragmentSpecResolver } = relay.environment.unstable_internal
-      const resolver = createFragmentSpecResolver(
-        relay,
-        this.$options.name,
+      const relayContext = assertRelayContext(this.props.__relayContext)
+      this._isARequestInFlight = false
+      this._refetchSubscription = null
+      this._refetchVariables = null
+      this._resolver = createFragmentSpecResolver(
+        relayContext,
+        containerName,
         fragments,
         this.$props,
         this._handleFragmentDataUpdate
       )
+      this.state = {
+        data: this._resolver.resolve(),
+        prevContext: relayContext,
+        contextForChildren: relayContext,
+        relayProp: this._buildRelayProp(relayContext)
+      }
+      this._isUnmounted = false
+      this._hasFetched = false
 
-      return {
-        // a.k.a this._relayContext in react-relay
-        context: Object.freeze({
-          relay: {
-            environment: relay.environment,
-            variables: relay.variables
-          }
-        }),
-        state: Object.freeze({
-          data: resolver.resolve(),
-          prevProps: this.$props,
-          relayEnvironment: relay.environment,
-          relayVariables: relay.variables,
-          relayProp: this._buildRelayProp(relay),
-          isARequestInFlight: false,
-          localVariables: null,
-          refetchSubscription: null,
-          resolver
-        }),
-        switch: true
-      }
-    },
-    computed: {
-      fragments () {
-        Object.keys(fragments).forEach(key => this[key])
-        return (this.switch = !this.switch)
-      }
+      return {}
     },
     methods: {
-      setState (state) {
-        this.state = Object.freeze({
-          ...this.state,
-          ...state
-        })
+      getDerivedStateFromProps (nextProps, prevState) {
+        const relayContext = assertRelayContext(nextProps.__relayContext)
+        const prevIDs = getDataIDsFromObject(fragments, this.$props)
+        const nextIDs = getDataIDsFromObject(fragments, nextProps)
+
+        // If the environment has changed or props point to new records then
+        // previously fetched data and any pending fetches no longer apply:
+        // - Existing references are on the old environment.
+        // - Existing references are based on old variables.
+        // - Pending fetches are for the previous records.
+        if (
+          relayContext.environment !== prevState.prevContext.environment ||
+          relayContext.variables !== prevState.prevContext.variables ||
+          !areEqual(prevIDs, nextIDs)
+        ) {
+          this._cleanup()
+          // Child containers rely on context.relay being mutated (for gDSFP).
+          this._resolver = createFragmentSpecResolver(
+            relayContext,
+            containerName,
+            fragments,
+            nextProps,
+            this._handleFragmentDataUpdate
+          )
+          this.setState({
+            prevContext: relayContext,
+            contextForChildren: relayContext,
+            relayProp: this._buildRelayProp(relayContext)
+          })
+        } else if (!this._hasFetched) {
+          this._resolver.setProps(nextProps)
+        }
+        const data = this._resolver.resolve()
+        if (data !== this.state.data) {
+          this.setState({ data })
+        }
       },
-      _buildRelayProp (relay) {
+      shouldComponentUpdate (nextProps, nextState) {
+        // Short-circuit if any Relay-related data has changed
+        if (
+          nextState.data !== this.state.data ||
+          nextState.relayProp !== this.state.relayProp
+        ) {
+          return true
+        }
+        // Otherwise, for convenience short-circuit if all non-Relay props
+        // are scalar and equal
+        const keys = Object.keys(nextProps)
+        for (let ii = 0; ii < keys.length; ii++) {
+          const key = keys[ii]
+          if (key === '__relayContext') {
+            if (
+              nextState.prevContext.environment !==
+                this.state.prevContext.environment ||
+              nextState.prevContext.variables !== this.state.prevContext.variables
+            ) {
+              return true
+            }
+          } else {
+            if (
+              !fragments.hasOwnProperty(key) &&
+              !isScalarAndEqual(nextProps[key], this.props[key])
+            ) {
+              return true
+            }
+          }
+        }
+        return false
+      },
+      _buildRelayProp (relayContext) {
         return {
           hasMore: this._hasMore,
           isLoading: this._isLoading,
           loadMore: this._loadMore,
           refetchConnection: this._refetchConnection,
-          environment: relay.environment
+          environment: relayContext.environment
         }
       },
       _handleFragmentDataUpdate () {
-        this.setState({
-          data: this.state.resolver.resolve()
-        })
+        this.setState({ data: this._resolver.resolve() })
       },
       _getConnectionData () {
         // Extract connection data and verify there are more edges to fetch
+        const restProps = this.$props
         const props = {
-          ...this.$props,
+          ...restProps,
           ...this.state.data
         }
         const connectionData = getConnectionFromProps(props)
@@ -196,12 +259,12 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
 
         invariant(
           typeof connectionData === 'object',
-          'RelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' +
+          'VueRelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' +
             'to return `null` or a plain object with %s and %s properties, got `%s`.',
-          this.$options.name,
+          componentName,
           EDGES,
           PAGE_INFO,
-          connectionData,
+          connectionData
         )
         const edges = connectionData[EDGES]
         const pageInfo = connectionData[PAGE_INFO]
@@ -210,19 +273,19 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         }
         invariant(
           Array.isArray(edges),
-          'RelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' +
+          'VueRelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' +
             'to return an object with %s: Array, got `%s`.',
-          this.$options.name,
+          componentName,
           EDGES,
-          edges,
+          edges
         )
         invariant(
           typeof pageInfo === 'object',
-          'RelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' +
+          'VueRelayPaginationContainer: Expected `getConnectionFromProps()` in `%s`' +
             'to return an object with %s: Object, got `%s`.',
-          this.$options.name,
+          componentName,
           PAGE_INFO,
-          pageInfo,
+          pageInfo
         )
         const hasMore =
           direction === FORWARD
@@ -236,14 +299,14 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         ) {
           warning(
             false,
-            'RelayPaginationContainer: Cannot paginate without %s fields in `%s`. ' +
+            'VueRelayPaginationContainer: Cannot paginate without %s fields in `%s`. ' +
               'Be sure to fetch %s (got `%s`) and %s (got `%s`).',
             PAGE_INFO,
-            this.$options.name,
+            componentName,
             direction === FORWARD ? HAS_NEXT_PAGE : HAS_PREV_PAGE,
             hasMore,
             direction === FORWARD ? END_CURSOR : START_CURSOR,
-            cursor,
+            cursor
           )
           return null
         }
@@ -262,9 +325,19 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         )
       },
       _isLoading () {
-        return !!this.state.refetchSubscription
+        return !!this._refetchSubscription
       },
-      _refetchConnection (totalCount, observerOrCallback, refetchVariables) {
+      _refetchConnection (
+        totalCount,
+        observerOrCallback,
+        refetchVariables
+      ) {
+        if (!this._canFetchPage('refetchConnection')) {
+          return {
+            dispose () {}
+          }
+        }
+        this._refetchVariables = refetchVariables
         const paginatingVariables = {
           count: totalCount,
           cursor: null,
@@ -273,13 +346,22 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         const fetch = this._fetchPage(
           paginatingVariables,
           toObserver(observerOrCallback),
-          { force: true },
-          refetchVariables,
+          { force: true }
         )
 
         return { dispose: fetch.unsubscribe }
       },
-      _loadMore (pageSize, observerOrCallback, options) {
+      _loadMore (
+        pageSize,
+        observerOrCallback,
+        options
+      ) {
+        if (!this._canFetchPage('loadMore')) {
+          return {
+            dispose () {}
+          }
+        }
+
         const observer = toObserver(observerOrCallback)
         const connectionData = this._getConnectionData()
         if (!connectionData) {
@@ -294,9 +376,9 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         const cursor = connectionData.cursor
         warning(
           cursor,
-          'RelayPaginationContainer: Cannot `loadMore` without valid `%s` (got `%s`)',
+          'VueRelayPaginationContainer: Cannot `loadMore` without valid `%s` (got `%s`)',
           direction === FORWARD ? END_CURSOR : START_CURSOR,
-          cursor,
+          cursor
         )
         const paginatingVariables = {
           count: pageSize,
@@ -307,80 +389,121 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
         return { dispose: fetch.unsubscribe }
       },
       _getQueryFetcher () {
-        if (!this.state.queryFetcher) {
-          this.setState({ queryFetcher: new VueRelayQueryFetcher() })
+        if (!this._queryFetcher) {
+          this._queryFetcher = new VueRelayQueryFetcher()
         }
-        return this.state.queryFetcher
+        return this._queryFetcher
       },
-      _fetchPage (paginatingVariables, observer, options, refetchVariables) {
-        const { environment } = relay
-        const {
-          createOperationSelector,
-          getRequest,
-          getVariablesFromObject
-        } = environment.unstable_internal
+      _canFetchPage (method) {
+        if (this._isUnmounted) {
+          warning(
+            false,
+            'VueRelayPaginationContainer: Unexpected call of `%s` ' +
+              'on unmounted container `%s`. It looks like some instances ' +
+              'of your container still trying to fetch data but they already ' +
+              'unmounted. Please make sure you clear all timers, intervals, async ' +
+              'calls, etc that may trigger `%s` call.',
+            method,
+            containerName,
+            method
+          )
+          return false
+        }
+        return true
+      },
+      _fetchPage (
+        paginatingVariables,
+        observer,
+        options
+      ) {
+        const { environment } = assertRelayContext(this.props.__relayContext)
+        const restProps = this.$props
         const props = {
-          ...this.$props,
+          ...restProps,
           ...this.state.data
         }
-        let fragmentVariables = getVariablesFromObject(
-          this.context.relay.variables,
+        let rootVariables
+        let fragmentVariables
+        const fragmentOwners = getFragmentOwners(fragments, restProps)
+        // NOTE: rootVariables are spread down below in a couple of places,
+        // so we compute them here from the fragment owners.
+        // For extra safety, we make sure the rootVariables include the
+        // variables from all owners in this fragmentSpec, even though they
+        // should all point to the same owner
+        forEachObject(fragments, (__, key) => {
+          const fragmentOwner = fragmentOwners[key]
+          const fragmentOwnerVariables = Array.isArray(fragmentOwner)
+            ? (fragmentOwner[0] && fragmentOwner[0].variables) ? fragmentOwner[0].variables : {}
+            : (fragmentOwner && fragmentOwner.variables) ? fragmentOwner.variables : {}
+          rootVariables = {
+            ...rootVariables,
+            ...fragmentOwnerVariables
+          }
+        })
+        fragmentVariables = getVariablesFromObject(
+          // NOTE: We pass empty operationVariables because we want to prefer
+          // the variables from the fragment owner
+          {},
           fragments,
-          this.$props,
+          restProps,
+          fragmentOwners
         )
-        fragmentVariables = { ...fragmentVariables, ...refetchVariables }
+        fragmentVariables = {
+          ...rootVariables,
+          ...fragmentVariables,
+          ...this._refetchVariables
+        }
         let fetchVariables = connectionConfig.getVariables(
           props,
           {
             count: paginatingVariables.count,
             cursor: paginatingVariables.cursor
           },
-          // Pass the variables used to fetch the fragments initially
-          fragmentVariables,
+          fragmentVariables
         )
         invariant(
           typeof fetchVariables === 'object' && fetchVariables !== null,
-          'RelayPaginationContainer: Expected `getVariables()` to ' +
+          'VueRelayPaginationContainer: Expected `getVariables()` to ' +
             'return an object, got `%s` in `%s`.',
           fetchVariables,
-          this.$options.name,
+          componentName
         )
         fetchVariables = {
           ...fetchVariables,
-          ...refetchVariables
+          ...this._refetchVariables
         }
-        this.setState({ localVariables: fetchVariables })
+        fragmentVariables = {
+          ...fetchVariables,
+          ...fragmentVariables
+        }
 
         const cacheConfig = options
           ? { force: !!options.force }
           : undefined
-        if (cacheConfig && options && options.rerunParamExperimental) {
-          cacheConfig.rerunParamExperimental = options.rerunParamExperimental
-        }
         const request = getRequest(connectionConfig.query)
-        const operation = createOperationSelector(request, fetchVariables)
+        const operation = createOperationDescriptor(request, fetchVariables)
 
         let refetchSubscription = null
 
-        if (this.state.refetchSubscription) {
-          this.state.refetchSubscription.unsubscribe()
+        if (this._refetchSubscription) {
+          this._refetchSubscription.unsubscribe()
         }
+        this._hasFetched = true
 
-        const onNext = (payload, complete) => {
-          // Child containers rely on context.relay being mutated (for gDSFP).
-          this.context.relay.environment = relay.environment
-          this.context.relay.variables = {
-            ...relay.variables,
+        const onNext = (_, complete) => {
+          const contextVariables = {
+            ...this.props.__relayContext.variables,
             ...fragmentVariables
           }
-          const prevData = this.state.resolver.resolve()
-          this.state.resolver.setVariables(
+          const prevData = this._resolver.resolve()
+          this._resolver.setVariables(
             getFragmentVariables(
               fragmentVariables,
-              paginatingVariables.totalCount,
+              paginatingVariables.totalCount
             ),
+            operation.node
           )
-          const nextData = this.state.resolver.resolve()
+          const nextData = this._resolver.resolve()
 
           // Workaround slightly different handling for connection in different
           // core implementations:
@@ -392,21 +515,30 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
           // resolved data.
           // TODO #14894725: remove PaginationContainer equal check
           if (!areEqual(prevData, nextData)) {
-            this.setState({ data: nextData })
+            this.setState(
+              {
+                data: nextData,
+                contextForChildren: {
+                  environment: this.props.__relayContext.environment,
+                  variables: contextVariables
+                }
+              },
+              complete
+            )
+          } else {
+            complete()
           }
-          complete()
         }
 
         const cleanup = () => {
-          if (this.state.refetchSubscription === refetchSubscription) {
-            this.setState({
-              refetchSubscription: null,
-              isARequestInFlight: false
-            })
+          if (this._refetchSubscription === refetchSubscription) {
+            this._refetchSubscription = null
+            this._isARequestInFlight = false
           }
+          this.$forceUpdate() // https://github.com/facebook/relay/issues/1973#issuecomment-325441743
         }
 
-        this.setState({ isARequestInFlight: true })
+        this._isARequestInFlight = true
         refetchSubscription = this._getQueryFetcher()
           .execute({
             environment,
@@ -420,7 +552,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
                 sink.next() // pass void to public observer's `next`
                 sink.complete()
               })
-            }),
+            })
           )
           // use do instead of finally so that observer's `complete` fires after cleanup
           .do({
@@ -430,77 +562,31 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
           })
           .subscribe(observer || {})
 
-        this.setState({ refetchSubscription: this.state.isARequestInFlight
+        this._refetchSubscription = this._isARequestInFlight
           ? refetchSubscription
           : null
-        })
+
+        this.$forceUpdate() // https://github.com/facebook/relay/issues/1973#issuecomment-325441743
 
         return refetchSubscription
       },
-      _release () {
-        this.state.resolver.dispose()
-        if (this.state.refetchSubscription) {
-          this.state.refetchSubscription.unsubscribe()
-          this.setState({
-            refetchSubscription: null,
-            isARequestInFlight: false
-          })
+      _cleanup () {
+        this._resolver.dispose()
+        this._refetchVariables = null
+        this._hasFetched = false
+        if (this._refetchSubscription) {
+          this._refetchSubscription.unsubscribe()
+          this._refetchSubscription = null
+          this._isARequestInFlight = false
         }
-        if (this.state.queryFetcher) {
-          this.state.queryFetcher.dispose()
+        if (this._queryFetcher) {
+          this._queryFetcher.dispose()
         }
       }
     },
-    watch: { fragments () {
-      const {
-        createFragmentSpecResolver,
-        getDataIDsFromObject
-      } = relay.environment.unstable_internal
-
-      const prevIDs = getDataIDsFromObject(fragments, this.state.prevProps)
-      const nextIDs = getDataIDsFromObject(fragments, this.$props)
-
-      // If the environment has changed or props point to new records then
-      // previously fetched data and any pending fetches no longer apply:
-      // - Existing references are on the old environment.
-      // - Existing references are based on old variables.
-      // - Pending fetches are for the previous records.
-      if (
-        this.state.relayEnvironment !== relay.environment ||
-        this.state.relayVariables !== relay.variables ||
-        !areEqual(prevIDs, nextIDs)
-      ) {
-        this._release()
-
-        this.context.relay.environment = relay.environment
-        this.context.relay.variables = relay.variables
-
-        const resolver = createFragmentSpecResolver(
-          relay,
-          this.$options.name,
-          fragments,
-          this.$props,
-          this._handleFragmentDataUpdate
-        )
-
-        this.setState({
-          prevProps: this.$props,
-          relayEnvironment: relay.environment,
-          relayVariables: relay.variables,
-          relayProp: this._buildRelayProp(relay),
-          localVariables: null,
-          resolver
-        })
-      } else if (!this.state.localVariables) {
-        this.state.resolver.setProps(this.$props)
-      }
-      const data = this.state.resolver.resolve()
-      if (data !== this.state.data) {
-        this.setState({ data })
-      }
-    } },
     beforeDestroy () {
-      this._release()
+      this._isUnmounted = true
+      this._cleanup()
     }
   }
 }
@@ -517,8 +603,8 @@ const createPaginationContainer = function () {
 
   const [component, fragmentSpec, connectionConfig] = arguments
 
-  return buildVueRelayContainer(component, fragmentSpec, function (fragments) {
-    return createContainerWithFragments.call(this, fragments, connectionConfig)
+  return buildVueRelayContainer(component, fragmentSpec, function (component, fragments) {
+    return createContainerWithFragments(component, fragments, connectionConfig)
   })
 }
 

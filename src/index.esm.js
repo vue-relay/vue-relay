@@ -1,17 +1,18 @@
 import QueryRenderer from './VueRelayQueryRenderer'
-import { createRefetchContainer } from './VueRelayRefetchContainer'
-import { createPaginationContainer } from './VueRelayPaginationContainer'
 import { createFragmentContainer } from './VueRelayFragmentContainer'
+import { createPaginationContainer } from './VueRelayPaginationContainer'
+import { createRefetchContainer } from './VueRelayRefetchContainer'
 
-const {
+import {
   MutationTypes,
   RangeOperations,
+  applyOptimisticMutation,
   commitLocalUpdate,
   commitMutation,
   fetchQuery,
   graphql,
   requestSubscription
-} = require('relay-runtime')
+} from 'relay-runtime'
 
 export default {
   QueryRenderer,
@@ -19,11 +20,12 @@ export default {
   MutationTypes,
   RangeOperations,
 
+  applyOptimisticMutation,
   commitLocalUpdate,
   commitMutation,
-  createRefetchContainer,
-  createPaginationContainer,
   createFragmentContainer,
+  createPaginationContainer,
+  createRefetchContainer,
   fetchQuery,
   graphql,
   requestSubscription
@@ -35,11 +37,12 @@ export {
   MutationTypes,
   RangeOperations,
 
+  applyOptimisticMutation,
   commitLocalUpdate,
   commitMutation,
-  createRefetchContainer,
-  createPaginationContainer,
   createFragmentContainer,
+  createPaginationContainer,
+  createRefetchContainer,
   fetchQuery,
   graphql,
   requestSubscription

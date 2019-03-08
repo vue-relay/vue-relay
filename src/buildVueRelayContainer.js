@@ -1,73 +1,114 @@
-import isRelayContext from './isRelayContext'
+import Vue from 'vue'
 
-const invariant = require('fbjs/lib/invariant')
-const mapObject = require('fbjs/lib/mapObject')
+import assertFragmentMap from './assertFragmentMap'
+import {
+  getComponentName
+} from './VueRelayContainerUtils'
 
-const assertRelayContext = function (relay) {
-  invariant(
-    isRelayContext(relay),
-    'RelayContextConsumer: Expected `relayContext` to be an object ' +
-      'conforming to the `RelayContext` interface, got `%s`.',
-    relay
-  )
-  return (relay)
-}
+import mapObject from 'fbjs/lib/mapObject'
+import { getFragment } from 'relay-runtime'
+
+const VUE_RELAY_PROPS = 'vue-relay-props'
 
 const buildVueRelayContainer = function (component, fragmentSpec, createContainerWithFragments) {
+  // Sanity-check user-defined fragment input
+  assertFragmentMap(getComponentName(component), fragmentSpec)
+
+  const fragments = mapObject(fragmentSpec, getFragment)
+
+  const props = Object.keys(fragments)
+
   return {
-    name: 'relay-context-consumer',
-    inject: ['relay'],
-    render (h) {
-      return h(this.component, {
-        props: this.$attrs
-      })
-    },
-    created () {
-      const relay = assertRelayContext(this.relay)
-      const { getFragment: getFragmentFromTag } = relay.environment.unstable_internal
-      const fragments = mapObject(fragmentSpec, getFragmentFromTag)
-
-      const context = this
-
-      this.component = {
-        extends: createContainerWithFragments.call(this, fragments),
-        props: Object.keys(fragments),
-        render (h) {
-          if (this.context) {
-            return h(this.component)
+    extends: createContainerWithFragments(component, fragments),
+    props,
+    methods: {
+      applyDerivedStateFromProps () {
+        this.setState(this.getDerivedStateFromProps({
+          ...this.$props,
+          ...this.props
+        }, this.state))
+      },
+      setState (partialState, callback) {
+        if (typeof partialState === 'function') {
+          partialState = partialState({ ...this.state })
+        }
+        if (partialState != null) {
+          const nextState = {
+            ...this.state,
+            ...partialState
           }
-          return this.component.render(h)
-        },
-        created () {
-          this.component = {
-            name: 'relay-context-provider',
-            provide: {
-              relay: (this.context || context).relay
-            },
-            render: (h) => {
-              if (component != null) {
-                return h(component, {
-                  props: {
-                    ...this.$attrs,
-                    ...this.state.data,
-                    relay: this.state.relayProp
-                  }
-                })
-              }
-              return h('keep-alive', {
-                props: {
-                  include: []
-                }
-              }, context.$scopedSlots.default({
-                ...this.state.data,
-                relay: this.state.relayProp
-              }))
-            }
+
+          const forceUpdate = this.shouldComponentUpdate({
+            ...this.$props,
+            ...this.props
+          }, nextState)
+
+          this.prevState = { ...this.state }
+          this.state = nextState
+
+          if (typeof callback === 'function') {
+            callback()
+          }
+
+          if (forceUpdate) {
+            this.$forceUpdate()
           }
         }
       }
+    },
+    watch: {
+      'props.__relayContext': 'applyDerivedStateFromProps',
+      ...props.map(prop => ({ [prop]: 'applyDerivedStateFromProps' }))
+    },
+    render (h) {
+      if (this.state.contextForChildren != null) {
+        this[VUE_RELAY_PROPS].__relayContext = Object.freeze({
+          ...this.state.contextForChildren
+        })
+      }
+
+      if (component != null) {
+        return h(component, {
+          props: {
+            ...this.$attrs,
+            ...this.state.data,
+            relay: this.state.relayProp
+          }
+        })
+      }
+      return h('keep-alive', {
+        props: {
+          include: []
+        }
+      }, this.$scopedSlots.default({
+        ...this.state.data,
+        relay: this.state.relayProp
+      }))
+    },
+    beforeUpdate () {
+      if (this.prevState == null) {
+        this.prevState = { ...this.state }
+      }
+    },
+    updated () {
+      delete this.prevState
+    },
+    inject: {
+      'props': { from: VUE_RELAY_PROPS }
+    },
+    provide () {
+      return this.state.contextForChildren != null
+        ? {
+          [VUE_RELAY_PROPS]: (this[VUE_RELAY_PROPS] = Vue.observable({
+            __relayContext: Object.freeze({
+              ...this.state.contextForChildren
+            })
+          }))
+        }
+        : {}
     }
   }
 }
 
 export default buildVueRelayContainer
+export { VUE_RELAY_PROPS }

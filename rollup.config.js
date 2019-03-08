@@ -1,6 +1,5 @@
 import babel from 'rollup-plugin-babel'
 import replace from 'rollup-plugin-replace'
-import uglify from 'rollup-plugin-uglify'
 
 const version = process.env.VERSION || require('./package.json').version
 const banner =
@@ -11,22 +10,6 @@ const banner =
  */`
 
 export default [
-  {
-    input: 'src/index.js',
-    output: {
-      format: 'umd',
-      file: 'dist/vue-relay.js'
-    },
-    env: 'development'
-  },
-  {
-    input: 'src/index.js',
-    output: {
-      format: 'umd',
-      file: 'dist/vue-relay.min.js'
-    },
-    env: 'production'
-  },
   {
     input: 'src/index.js',
     output: {
@@ -47,13 +30,19 @@ export default [
     banner,
     name: 'vue-relay'
   }),
+  external: [
+    'fbjs/lib/areEqual',
+    'fbjs/lib/forEachObject',
+    'fbjs/lib/invariant',
+    'fbjs/lib/mapObject',
+    'fbjs/lib/warning',
+    'relay-runtime',
+    'vue'
+  ],
   plugins: [
     babel(),
     ...(config.env
       ? [replace({ 'process.env.NODE_ENV': JSON.stringify(config.env) })]
-      : []),
-    ...(/\.min\.js$/.test(config.output.file)
-      ? [uglify()]
       : [])
   ]
 }))

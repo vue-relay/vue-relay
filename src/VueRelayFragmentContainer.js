@@ -1,162 +1,178 @@
 import buildVueRelayContainer from './buildVueRelayContainer'
+import { assertRelayContext } from './RelayContext'
+import { getContainerName } from './VueRelayContainerUtils'
 
-const areEqual = require('fbjs/lib/areEqual')
-const invariant = require('fbjs/lib/invariant')
+import areEqual from 'fbjs/lib/areEqual'
+import invariant from 'fbjs/lib/invariant'
+import {
+  createFragmentSpecResolver,
+  getDataIDsFromObject,
+  isScalarAndEqual
+} from 'relay-runtime'
 
-const createContainerWithFragments = function (fragments) {
-  const relay = this.relay
+const createContainerWithFragments = function (component, fragments) {
+  const containerName = getContainerName(component) + '-fragment-container'
 
   return {
-    name: 'relay-fragment-container',
+    name: containerName,
     data () {
-      const { createFragmentSpecResolver } = relay.environment.unstable_internal
+      const relayContext = assertRelayContext(this.props.__relayContext)
       // Do not provide a subscription/callback here.
       // It is possible for this render to be interrupted or aborted,
       // In which case the subscription would cause a leak.
       // We will add the subscription in componentDidMount().
       const resolver = createFragmentSpecResolver(
-        relay,
-        this.$options.name,
+        relayContext,
+        containerName,
         fragments,
         this.$props
       )
+      this.state = {
+        data: resolver.resolve(),
+        prevProps: this.$props,
+        prevPropsContext: relayContext,
+        relayProp: getRelayProp(relayContext.environment),
+        resolver
+      }
 
-      return {
-        prevState: Object.freeze({
-          resolver
-        }),
-        state: Object.freeze({
-          data: resolver.resolve(),
-          prevProps: this.$props,
-          relayEnvironment: relay.environment,
-          relayVariables: relay.variables,
-          relayProp: {
-            isLoading: resolver.isLoading(),
-            environment: relay.environment
-          },
-          resolver
-        }),
-        switch: true
-      }
-    },
-    computed: {
-      fragments () {
-        Object.keys(fragments).forEach(key => this[key])
-        return (this.switch = !this.switch)
-      }
+      return {}
     },
     methods: {
-      setState (state) {
-        this.state = Object.freeze({
-          ...this.state,
-          ...state
-        })
+      getDerivedStateFromProps (nextProps, prevState) {
+        // Any props change could impact the query, so we mirror props in state.
+        // This is an unusual pattern, but necessary for this container usecase.
+        const { prevProps } = prevState
+        const relayContext = assertRelayContext(nextProps.__relayContext)
+        const prevIDs = getDataIDsFromObject(fragments, prevProps)
+        const nextIDs = getDataIDsFromObject(fragments, nextProps)
+
+        let resolver = prevState.resolver
+
+        // If the environment has changed or props point to new records then
+        // previously fetched data and any pending fetches no longer apply:
+        // - Existing references are on the old environment.
+        // - Existing references are based on old variables.
+        // - Pending fetches are for the previous records.
+        if (
+          prevState.prevPropsContext.environment !== relayContext.environment ||
+          prevState.prevPropsContext.variables !== relayContext.variables ||
+          !areEqual(prevIDs, nextIDs)
+        ) {
+          // Do not provide a subscription/callback here.
+          // It is possible for this render to be interrupted or aborted,
+          // In which case the subscription would cause a leak.
+          // We will add the subscription in componentDidUpdate().
+          resolver = createFragmentSpecResolver(
+            relayContext,
+            containerName,
+            fragments,
+            nextProps
+          )
+
+          return {
+            data: resolver.resolve(),
+            prevPropsContext: relayContext,
+            prevProps: nextProps,
+            relayProp: getRelayProp(relayContext.environment),
+            resolver
+          }
+        } else {
+          resolver.setProps(nextProps)
+
+          const data = resolver.resolve()
+          if (data !== prevState.data) {
+            return {
+              data,
+              prevProps: nextProps,
+              prevPropsContext: relayContext,
+              relayProp: getRelayProp(relayContext.environment)
+            }
+          }
+        }
+
+        return null
+      },
+      shouldComponentUpdate (nextProps, nextState) {
+        // Short-circuit if any Relay-related data has changed
+        if (nextState.data !== this.state.data) {
+          return true
+        }
+        // Otherwise, for convenience short-circuit if all non-Relay props
+        // are scalar and equal
+        const keys = Object.keys(nextProps)
+        for (let ii = 0; ii < keys.length; ii++) {
+          const key = keys[ii]
+          if (key === '__relayContext') {
+            if (
+              nextState.prevPropsContext.environment !==
+                this.state.prevPropsContext.environment ||
+              nextState.prevPropsContext.variables !==
+                this.state.prevPropsContext.variables
+            ) {
+              return true
+            }
+          } else {
+            if (
+              !fragments.hasOwnProperty(key) &&
+              !isScalarAndEqual(nextProps[key], this.props[key])
+            ) {
+              return true
+            }
+          }
+        }
+        return false
       },
       _handleFragmentDataUpdate () {
-        // If this event belongs to the current data source, update.
-        // Otherwise we should ignore it.
-        if (this.state.resolver === this.prevState.resolver) {
-          this.setState({
-            data: this.state.resolver.resolve(),
-            relayProp: {
-              isLoading: this.state.resolver.isLoading(),
-              environment: this.state.relayProp.environment
+        const resolverFromThisUpdate = this.state.resolver
+        this.setState(updatedState =>
+          // If this event belongs to the current data source, update.
+          // Otherwise we should ignore it.
+          resolverFromThisUpdate === updatedState.resolver
+            ? {
+              data: updatedState.resolver.resolve(),
+              relayProp: getRelayProp(updatedState.relayProp.environment)
             }
-          })
-        }
+            : null
+        )
       },
-      _subscribeToNewResolver () {
+      _rerenderIfStoreHasChanged () {
         const { data, resolver } = this.state
-
-        // Event listeners are only safe to add during the commit phase,
-        // So they won't leak if render is interrupted or errors.
-        resolver.setCallback(this._handleFragmentDataUpdate)
-
         // External values could change between render and commit.
         // Check for this case, even though it requires an extra store read.
         const maybeNewData = resolver.resolve()
         if (data !== maybeNewData) {
           this.setState({ data: maybeNewData })
         }
+      },
+      _subscribeToNewResolver () {
+        const { resolver } = this.state
+
+        // Event listeners are only safe to add during the commit phase,
+        // So they won't leak if render is interrupted or errors.
+        resolver.setCallback(this._handleFragmentDataUpdate)
       }
     },
-    watch: { fragments () {
-      const {
-        createFragmentSpecResolver,
-        getDataIDsFromObject
-      } = relay.environment.unstable_internal
-
-      const prevIDs = getDataIDsFromObject(fragments, this.state.prevProps)
-      const nextIDs = getDataIDsFromObject(fragments, this.$props)
-
-      let resolver = this.state.resolver
-
-      // If the environment has changed or props point to new records then
-      // previously fetched data and any pending fetches no longer apply:
-      // - Existing references are on the old environment.
-      // - Existing references are based on old variables.
-      // - Pending fetches are for the previous records.
-      if (
-        this.state.relayEnvironment !== relay.environment ||
-        this.state.relayVariables !== relay.variables ||
-        !areEqual(prevIDs, nextIDs)
-      ) {
-        this.prevState = Object.freeze({ resolver })
-
-        // Do not provide a subscription/callback here.
-        // It is possible for this render to be interrupted or aborted,
-        // In which case the subscription would cause a leak.
-        // We will add the subscription in componentDidUpdate().
-        resolver = createFragmentSpecResolver(
-          relay,
-          this.$options.name,
-          fragments,
-          this.$props
-        )
-
-        this.setState({
-          data: resolver.resolve(),
-          prevProps: this.$props,
-          relayEnvironment: relay.environment,
-          relayVariables: relay.variables,
-          relayProp: {
-            isLoading: resolver.isLoading(),
-            environment: relay.environment
-          },
-          resolver
-        })
-      } else {
-        resolver.setProps(this.$props)
-
-        const data = resolver.resolve()
-        if (data !== this.state.data) {
-          this.setState({
-            data,
-            prevProps: this.$props,
-            relayEnvironment: relay.environment,
-            relayVariables: relay.variables,
-            relayProp: {
-              isLoading: resolver.isLoading(),
-              environment: relay.environment
-            }
-          })
-        }
-      }
-    } },
     mounted () {
       this._subscribeToNewResolver()
+      this._rerenderIfStoreHasChanged()
     },
     updated () {
       if (this.state.resolver !== this.prevState.resolver) {
         this.prevState.resolver.dispose()
-        this.prevState = Object.freeze({ resolver: this.state.resolver })
 
         this._subscribeToNewResolver()
       }
+      this._rerenderIfStoreHasChanged()
     },
     beforeDestroy () {
       this.state.resolver.dispose()
     }
+  }
+}
+
+function getRelayProp (environment) {
+  return {
+    environment
   }
 }
 

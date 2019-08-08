@@ -126,11 +126,11 @@ const createContainerWithFragments = function (fragments, taggedNode) {
             : observerOrCallback || ({})
 
         const {
-          createOperationSelector,
+          createOperationDescriptor,
           getRequest
         } = relay.environment.unstable_internal
         const query = getRequest(taggedNode)
-        const operation = createOperationSelector(query, fetchVariables)
+        const operation = createOperationDescriptor(query, fetchVariables)
 
         // TODO: T26288752 find a better way
         this.setState({ localVariables: fetchVariables })

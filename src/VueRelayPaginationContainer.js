@@ -315,7 +315,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
       _fetchPage (paginatingVariables, observer, options, refetchVariables) {
         const { environment } = relay
         const {
-          createOperationSelector,
+          createOperationDescriptor,
           getRequest,
           getVariablesFromObject
         } = environment.unstable_internal
@@ -358,7 +358,7 @@ const createContainerWithFragments = function (fragments, connectionConfig) {
           cacheConfig.rerunParamExperimental = options.rerunParamExperimental
         }
         const request = getRequest(connectionConfig.query)
-        const operation = createOperationSelector(request, fetchVariables)
+        const operation = createOperationDescriptor(request, fetchVariables)
 
         let refetchSubscription = null
 

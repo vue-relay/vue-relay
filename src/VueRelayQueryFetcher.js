@@ -21,13 +21,13 @@ export default class VueRelayQueryFetcher {
   }
 
   execute ({ environment, operation, cacheConfig, preservePreviousReferences = false }) {
-    const { createOperationSelector } = environment.unstable_internal
+    const { createOperationDescriptor } = environment.unstable_internal
     const nextReferences = []
 
     return environment
       .execute({ operation, cacheConfig })
       .map(payload => {
-        const operationForPayload = createOperationSelector(
+        const operationForPayload = createOperationDescriptor(
           operation.node,
           payload.variables,
           payload.operation,

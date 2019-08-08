@@ -207,11 +207,11 @@ const fetchQueryAndComputeStateFromProps = function (props, queryFetcher, retryC
     const genericEnvironment = environment
 
     const {
-      createOperationSelector,
+      createOperationDescriptor,
       getRequest
     } = genericEnvironment.unstable_internal
     const request = getRequest(query)
-    const operation = createOperationSelector(request, variables)
+    const operation = createOperationDescriptor(request, variables)
 
     try {
       const storeSnapshot =

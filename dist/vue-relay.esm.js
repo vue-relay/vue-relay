@@ -429,7 +429,7 @@ function assertFragmentMap(componentName, fragmentSpec) {
 }
 
 function getComponentName(component) {
-  return component ? component.name || 'component' : 'template';
+  return component ? component.name || 'component' : 'slot';
 }
 
 function getContainerName(component) {

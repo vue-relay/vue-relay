@@ -1,7 +1,7 @@
 function getComponentName (component) {
   return component
     ? component.name || 'component'
-    : 'template'
+    : 'slot'
 }
 
 function getContainerName (component) {

@@ -1,6 +1,6 @@
 {
   "name": "vue-relay",
-  "version": "5.0.1",
+  "version": "5.0.2",
   "description": "A framework for building GraphQL-driven Vue.js applications.",
   "keywords": [
     "vue",

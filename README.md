@@ -38,7 +38,7 @@ Please note that the "relay" plugin should run before other plugins or presets t
 
 #### Set up relay-compiler
 
-Relay's ahead-of-time compilation requires the [Relay Compiler](https://facebook.github.io/relay/docs/en/graphql-in-relay.html#relay-compiler.html), which you can install via `yarn` or `npm`:
+Relay's ahead-of-time compilation requires the [Relay Compiler](https://relay.dev/docs/en/graphql-in-relay.html#relay-compiler), which you can install via `yarn` or `npm`:
 
 ``` sh
 yarn add --dev relay-compiler graphql
@@ -60,7 +60,7 @@ yarn run relay
 
 **Note:** `relay-compiler` does not understand single-file components with a `.vue` extension. You can `export` `graphql` template literals in `.js` files, and then `import` them in `.vue` single-file components.
 
-For more details, check out [Relay Compiler docs](https://facebook.github.io/relay/docs/en/graphql-in-relay.html#relay-compiler).
+For more details, check out [Relay Compiler docs](https://relay.dev/docs/en/graphql-in-relay.html#relay-compiler).
 
 ---
 
@@ -70,8 +70,8 @@ For more details, check out [Relay Compiler docs](https://facebook.github.io/rel
 
 #### Props
 
-- `environment`: The [Relay Environment](https://facebook.github.io/relay/docs/en/relay-environment.html)
-- `query`: The graphql tagged query. **Note:** To [enable compatibility](https://facebook.github.io/relay/docs/en/relay-compat.html) mode, relay-compiler enforces the query to be named as `<FileName>Query`. Optional, if not provided, an empty props object is passed to the render callback.
+- `environment`: The [Relay Environment](https://relay.dev/docs/en/relay-environment.html)
+- `query`: The graphql tagged query. **Note:** To [enable compatibility](https://relay.dev/docs/en/relay-compat.html) mode, relay-compiler enforces the query to be named as `<FileName>Query`. Optional, if not provided, an empty props object is passed to the render callback.
 - `variables`: Object containing set of variables to pass to the GraphQL query, i.e. a mapping from variable name to value. **Note:** If a new set of variables is passed, the QueryRenderer will re-fetch the query.
 
 #### Scoped Slot Props
@@ -102,7 +102,7 @@ export default {
   },
   data () {
     return {
-      environment: ..., // https://facebook.github.io/relay/docs/en/relay-environment.html
+      environment: ..., // https://relay.dev/docs/en/relay-environment.html
       query: graphql`
         query ExampleQuery($pageID: ID!) {
           page(id: $pageID) {
@@ -198,7 +198,7 @@ createPaginationContainer([component, ]fragmentSpec, connectionConfig)
 
 ### Other APIs
 
-Other APIs are exactly same as Relay's Public APIs. Please refer to Relay's [documentation](https://facebook.github.io/relay/docs/en/introduction-to-relay.html).
+Other APIs are exactly same as Relay's Public APIs. Please refer to Relay's [documentation](https://relay.dev/docs/en/introduction-to-relay.html).
 
 ---
 

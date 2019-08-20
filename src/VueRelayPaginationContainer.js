@@ -146,7 +146,11 @@ const createContainerWithFragments = function (component, fragments, connectionC
       )
       this.state = {
         data: this._resolver.resolve(),
-        prevContext: relayContext,
+        prevProps: {
+          ...this.$props,
+          ...this.props
+        },
+        prevPropsContext: relayContext,
         contextForChildren: relayContext,
         relayProp: this._buildRelayProp(relayContext)
       }
@@ -157,8 +161,11 @@ const createContainerWithFragments = function (component, fragments, connectionC
     },
     methods: {
       getDerivedStateFromProps (nextProps, prevState) {
+        // Any props change could impact the query, so we mirror props in state.
+        // This is an unusual pattern, but necessary for this container usecase.
+        const { prevProps } = prevState
         const relayContext = assertRelayContext(nextProps.__relayContext)
-        const prevIDs = getDataIDsFromObject(fragments, this.$props)
+        const prevIDs = getDataIDsFromObject(fragments, prevProps)
         const nextIDs = getDataIDsFromObject(fragments, nextProps)
 
         // If the environment has changed or props point to new records then
@@ -167,8 +174,8 @@ const createContainerWithFragments = function (component, fragments, connectionC
         // - Existing references are based on old variables.
         // - Pending fetches are for the previous records.
         if (
-          relayContext.environment !== prevState.prevContext.environment ||
-          relayContext.variables !== prevState.prevContext.variables ||
+          prevState.prevPropsContext.environment !== relayContext.environment ||
+          prevState.prevPropsContext.variables !== relayContext.variables ||
           !areEqual(prevIDs, nextIDs)
         ) {
           this._cleanup()
@@ -180,18 +187,24 @@ const createContainerWithFragments = function (component, fragments, connectionC
             nextProps,
             this._handleFragmentDataUpdate
           )
-          this.setState({
-            prevContext: relayContext,
+          return {
+            data: this._resolver.resolve(),
+            prevProps: nextProps,
+            prevPropsContext: relayContext,
             contextForChildren: relayContext,
             relayProp: this._buildRelayProp(relayContext)
-          })
+          }
         } else if (!this._hasFetched) {
           this._resolver.setProps(nextProps)
         }
         const data = this._resolver.resolve()
         if (data !== this.state.data) {
-          this.setState({ data })
+          return {
+            data,
+            prevProps: nextProps
+          }
         }
+        return null
       },
       shouldComponentUpdate (nextProps, nextState) {
         // Short-circuit if any Relay-related data has changed
@@ -208,9 +221,10 @@ const createContainerWithFragments = function (component, fragments, connectionC
           const key = keys[ii]
           if (key === '__relayContext') {
             if (
-              nextState.prevContext.environment !==
-                this.state.prevContext.environment ||
-              nextState.prevContext.variables !== this.state.prevContext.variables
+              nextState.prevPropsContext.environment !==
+                this.state.prevPropsContext.environment ||
+              nextState.prevPropsContext.variables !==
+                this.state.prevPropsContext.variables
             ) {
               return true
             }
@@ -225,6 +239,7 @@ const createContainerWithFragments = function (component, fragments, connectionC
         }
         return false
       },
+      componentDidUpdate () {},
       _buildRelayProp (relayContext) {
         return {
           hasMore: this._hasMore,

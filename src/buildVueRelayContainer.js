@@ -33,17 +33,20 @@ const buildVueRelayContainer = function (component, fragmentSpec, createContaine
           partialState = partialState({ ...this.state })
         }
         if (partialState != null) {
+          const prevState = this.state
+
           const nextState = {
-            ...this.state,
+            ...prevState,
             ...partialState
           }
 
-          const forceUpdate = this.shouldComponentUpdate({
+          const prevProps = {
             ...this.$props,
             ...this.props
-          }, nextState)
+          }
 
-          this.prevState = { ...this.state }
+          const forceUpdate = this.shouldComponentUpdate(prevProps, nextState)
+
           this.state = nextState
 
           if (typeof callback === 'function') {
@@ -51,6 +54,9 @@ const buildVueRelayContainer = function (component, fragmentSpec, createContaine
           }
 
           if (forceUpdate) {
+            this.$nextTick(() => {
+              this.componentDidUpdate(prevProps, prevState)
+            })
             this.$forceUpdate()
           }
         }
@@ -84,14 +90,6 @@ const buildVueRelayContainer = function (component, fragmentSpec, createContaine
         ...this.state.data,
         relay: this.state.relayProp
       }))
-    },
-    beforeUpdate () {
-      if (this.prevState == null) {
-        this.prevState = { ...this.state }
-      }
-    },
-    updated () {
-      delete this.prevState
     },
     inject: {
       'props': { from: VUE_RELAY_PROPS }

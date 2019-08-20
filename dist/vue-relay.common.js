@@ -454,15 +454,20 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
         this.setState(this.getDerivedStateFromProps(_objectSpread2({}, this.$props, {}, this.props), this.state));
       },
       setState: function setState(partialState, callback) {
+        var _this = this;
+
         if (typeof partialState === 'function') {
           partialState = partialState(_objectSpread2({}, this.state));
         }
 
         if (partialState != null) {
-          var nextState = _objectSpread2({}, this.state, {}, partialState);
+          var prevState = this.state;
 
-          var forceUpdate = this.shouldComponentUpdate(_objectSpread2({}, this.$props, {}, this.props), nextState);
-          this.prevState = _objectSpread2({}, this.state);
+          var nextState = _objectSpread2({}, prevState, {}, partialState);
+
+          var prevProps = _objectSpread2({}, this.$props, {}, this.props);
+
+          var forceUpdate = this.shouldComponentUpdate(prevProps, nextState);
           this.state = nextState;
 
           if (typeof callback === 'function') {
@@ -470,6 +475,9 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
           }
 
           if (forceUpdate) {
+            this.$nextTick(function () {
+              _this.componentDidUpdate(prevProps, prevState);
+            });
             this.$forceUpdate();
           }
         }
@@ -500,14 +508,6 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
       }, this.$scopedSlots["default"](_objectSpread2({}, this.state.data, {
         relay: this.state.relayProp
       })));
-    },
-    beforeUpdate: function beforeUpdate() {
-      if (this.prevState == null) {
-        this.prevState = _objectSpread2({}, this.state);
-      }
-    },
-    updated: function updated() {
-      delete this.prevState;
     },
     inject: {
       'props': {
@@ -936,7 +936,7 @@ var createContainerWithFragments = function createContainerWithFragments(compone
       var resolver = relayRuntime.createFragmentSpecResolver(relayContext, containerName, fragments, this.$props);
       this.state = {
         data: resolver.resolve(),
-        prevProps: this.$props,
+        prevProps: _objectSpread2({}, this.$props, {}, this.props),
         prevPropsContext: relayContext,
         relayProp: getRelayProp(relayContext.environment),
         resolver: resolver
@@ -1012,6 +1012,15 @@ var createContainerWithFragments = function createContainerWithFragments(compone
 
         return false;
       },
+      componentDidUpdate: function componentDidUpdate(_, prevState) {
+        if (this.state.resolver !== prevState.resolver) {
+          prevState.resolver.dispose();
+
+          this._subscribeToNewResolver();
+        }
+
+        this._rerenderIfStoreHasChanged();
+      },
       _handleFragmentDataUpdate: function _handleFragmentDataUpdate() {
         var resolverFromThisUpdate = this.state.resolver;
         this.setState(function (updatedState) {
@@ -1047,15 +1056,6 @@ var createContainerWithFragments = function createContainerWithFragments(compone
     },
     mounted: function mounted() {
       this._subscribeToNewResolver();
-
-      this._rerenderIfStoreHasChanged();
-    },
-    updated: function updated() {
-      if (this.state.resolver !== this.prevState.resolver) {
-        this.prevState.resolver.dispose();
-
-        this._subscribeToNewResolver();
-      }
 
       this._rerenderIfStoreHasChanged();
     },
@@ -1168,7 +1168,8 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
       this._resolver = relayRuntime.createFragmentSpecResolver(relayContext, containerName, fragments, this.$props, this._handleFragmentDataUpdate);
       this.state = {
         data: this._resolver.resolve(),
-        prevContext: relayContext,
+        prevProps: _objectSpread2({}, this.$props, {}, this.props),
+        prevPropsContext: relayContext,
         contextForChildren: relayContext,
         relayProp: this._buildRelayProp(relayContext)
       };
@@ -1178,24 +1179,29 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
     },
     methods: {
       getDerivedStateFromProps: function getDerivedStateFromProps(nextProps, prevState) {
+        // Any props change could impact the query, so we mirror props in state.
+        // This is an unusual pattern, but necessary for this container usecase.
+        var prevProps = prevState.prevProps;
         var relayContext = assertRelayContext(nextProps.__relayContext);
-        var prevIDs = relayRuntime.getDataIDsFromObject(fragments, this.$props);
+        var prevIDs = relayRuntime.getDataIDsFromObject(fragments, prevProps);
         var nextIDs = relayRuntime.getDataIDsFromObject(fragments, nextProps); // If the environment has changed or props point to new records then
         // previously fetched data and any pending fetches no longer apply:
         // - Existing references are on the old environment.
         // - Existing references are based on old variables.
         // - Pending fetches are for the previous records.
 
-        if (relayContext.environment !== prevState.prevContext.environment || relayContext.variables !== prevState.prevContext.variables || !areEqual(prevIDs, nextIDs)) {
+        if (prevState.prevPropsContext.environment !== relayContext.environment || prevState.prevPropsContext.variables !== relayContext.variables || !areEqual(prevIDs, nextIDs)) {
           this._cleanup(); // Child containers rely on context.relay being mutated (for gDSFP).
 
 
           this._resolver = relayRuntime.createFragmentSpecResolver(relayContext, containerName, fragments, nextProps, this._handleFragmentDataUpdate);
-          this.setState({
-            prevContext: relayContext,
+          return {
+            data: this._resolver.resolve(),
+            prevProps: nextProps,
+            prevPropsContext: relayContext,
             contextForChildren: relayContext,
             relayProp: this._buildRelayProp(relayContext)
-          });
+          };
         } else if (!this._hasFetched) {
           this._resolver.setProps(nextProps);
         }
@@ -1203,10 +1209,13 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
         var data = this._resolver.resolve();
 
         if (data !== this.state.data) {
-          this.setState({
-            data: data
-          });
+          return {
+            data: data,
+            prevProps: nextProps
+          };
         }
+
+        return null;
       },
       shouldComponentUpdate: function shouldComponentUpdate(nextProps, nextState) {
         // Short-circuit if any Relay-related data has changed
@@ -1222,7 +1231,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
           var key = keys[ii];
 
           if (key === '__relayContext') {
-            if (nextState.prevContext.environment !== this.state.prevContext.environment || nextState.prevContext.variables !== this.state.prevContext.variables) {
+            if (nextState.prevPropsContext.environment !== this.state.prevPropsContext.environment || nextState.prevPropsContext.variables !== this.state.prevPropsContext.variables) {
               return true;
             }
           } else {
@@ -1234,6 +1243,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
 
         return false;
       },
+      componentDidUpdate: function componentDidUpdate() {},
       _buildRelayProp: function _buildRelayProp(relayContext) {
         return {
           hasMore: this._hasMore,
@@ -1550,7 +1560,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(compo
       this.state = {
         data: resolver.resolve(),
         localVariables: null,
-        prevProps: this.$props,
+        prevProps: _objectSpread2({}, this.$props, {}, this.props),
         prevPropsContext: relayContext,
         contextForChildren: relayContext,
         relayProp: getRelayProp$1(relayContext.environment, this._refetch),
@@ -1628,6 +1638,20 @@ var createContainerWithFragments$2 = function createContainerWithFragments(compo
         }
 
         return false;
+      },
+      componentDidUpdate: function componentDidUpdate(_, prevState) {
+        // If the environment has changed or props point to new records then
+        // previously fetched data and any pending fetches no longer apply:
+        // - Existing references are on the old environment.
+        // - Existing references are based on old variables.
+        // - Pending fetches are for the previous records.
+        if (this.state.resolver !== prevState.resolver) {
+          prevState.resolver.dispose();
+          this._queryFetcher && this._queryFetcher.dispose();
+          this._refetchSubscription && this._refetchSubscription.unsubscribe();
+
+          this._subscribeToNewResolver();
+        }
       },
       _subscribeToNewResolver: function _subscribeToNewResolver() {
         var _this$state = this.state,
@@ -1773,20 +1797,6 @@ var createContainerWithFragments$2 = function createContainerWithFragments(compo
     },
     mounted: function mounted() {
       this._subscribeToNewResolver();
-    },
-    updated: function updated() {
-      // If the environment has changed or props point to new records then
-      // previously fetched data and any pending fetches no longer apply:
-      // - Existing references are on the old environment.
-      // - Existing references are based on old variables.
-      // - Pending fetches are for the previous records.
-      if (this.state.resolver !== this.prevState.resolver) {
-        this.prevState.resolver.dispose();
-        this._queryFetcher && this._queryFetcher.dispose();
-        this._refetchSubscription && this._refetchSubscription.unsubscribe();
-
-        this._subscribeToNewResolver();
-      }
     },
     beforeDestroy: function beforeDestroy() {
       this._isUnmounted = true;

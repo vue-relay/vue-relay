@@ -29,7 +29,10 @@ const createContainerWithFragments = function (component, fragments) {
       )
       this.state = {
         data: resolver.resolve(),
-        prevProps: this.$props,
+        prevProps: {
+          ...this.$props,
+          ...this.props
+        },
         prevPropsContext: relayContext,
         relayProp: getRelayProp(relayContext.environment),
         resolver
@@ -122,6 +125,14 @@ const createContainerWithFragments = function (component, fragments) {
         }
         return false
       },
+      componentDidUpdate (_, prevState) {
+        if (this.state.resolver !== prevState.resolver) {
+          prevState.resolver.dispose()
+
+          this._subscribeToNewResolver()
+        }
+        this._rerenderIfStoreHasChanged()
+      },
       _handleFragmentDataUpdate () {
         const resolverFromThisUpdate = this.state.resolver
         this.setState(updatedState =>
@@ -154,14 +165,6 @@ const createContainerWithFragments = function (component, fragments) {
     },
     mounted () {
       this._subscribeToNewResolver()
-      this._rerenderIfStoreHasChanged()
-    },
-    updated () {
-      if (this.state.resolver !== this.prevState.resolver) {
-        this.prevState.resolver.dispose()
-
-        this._subscribeToNewResolver()
-      }
       this._rerenderIfStoreHasChanged()
     },
     beforeDestroy () {

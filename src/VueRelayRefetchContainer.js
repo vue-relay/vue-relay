@@ -38,7 +38,10 @@ const createContainerWithFragments = function (component, fragments, taggedNode)
       this.state = {
         data: resolver.resolve(),
         localVariables: null,
-        prevProps: this.$props,
+        prevProps: {
+          ...this.$props,
+          ...this.props
+        },
         prevPropsContext: relayContext,
         contextForChildren: relayContext,
         relayProp: getRelayProp(relayContext.environment, this._refetch),
@@ -136,6 +139,20 @@ const createContainerWithFragments = function (component, fragments, taggedNode)
           }
         }
         return false
+      },
+      componentDidUpdate (_, prevState) {
+        // If the environment has changed or props point to new records then
+        // previously fetched data and any pending fetches no longer apply:
+        // - Existing references are on the old environment.
+        // - Existing references are based on old variables.
+        // - Pending fetches are for the previous records.
+        if (this.state.resolver !== prevState.resolver) {
+          prevState.resolver.dispose()
+          this._queryFetcher && this._queryFetcher.dispose()
+          this._refetchSubscription && this._refetchSubscription.unsubscribe()
+
+          this._subscribeToNewResolver()
+        }
       },
       _subscribeToNewResolver () {
         const { data, resolver } = this.state
@@ -313,20 +330,6 @@ const createContainerWithFragments = function (component, fragments, taggedNode)
     },
     mounted () {
       this._subscribeToNewResolver()
-    },
-    updated () {
-      // If the environment has changed or props point to new records then
-      // previously fetched data and any pending fetches no longer apply:
-      // - Existing references are on the old environment.
-      // - Existing references are based on old variables.
-      // - Pending fetches are for the previous records.
-      if (this.state.resolver !== this.prevState.resolver) {
-        this.prevState.resolver.dispose()
-        this._queryFetcher && this._queryFetcher.dispose()
-        this._refetchSubscription && this._refetchSubscription.unsubscribe()
-
-        this._subscribeToNewResolver()
-      }
     },
     beforeDestroy () {
       this._isUnmounted = true

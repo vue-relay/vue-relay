@@ -85,12 +85,10 @@ For more details, check out [Relay Compiler docs](https://facebook.github.io/rel
 ``` vue
 <!-- Example.vue -->
 <template>
-  <query-renderer :environment="environment" :query="query" :variables="variables">
-    <template slot-scope="{ props, error, retry }">
-      <div v-if="error">{{ error.message }}</div>
-      <div v-else-if="props">{{ props.page.name }} is great!</div>
-      <div v-else>Loading</div>
-    </template>
+  <query-renderer :environment="environment" :query="query" :variables="variables" v-slot="{ props, error, retry }">
+    <div v-if="error">{{ error.message }}</div>
+    <div v-else-if="props">{{ props.page.name }} is great!</div>
+    <div v-else>Loading</div>
   </query-renderer>
 </template>
 

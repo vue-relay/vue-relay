@@ -1,5 +1,5 @@
 /**
- * vue-relay v5.0.0
+ * vue-relay v5.0.1
  * (c) 2019 なつき
  * @license BSD-2-Clause
  */

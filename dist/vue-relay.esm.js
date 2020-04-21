@@ -1,6 +1,6 @@
 /**
  * vue-relay v5.0.2
- * (c) 2019 なつき
+ * (c) 2020 なつき
  * @license BSD-2-Clause
  */
 import Vue from 'vue';
@@ -13,6 +13,8 @@ import forEachObject from 'fbjs/lib/forEachObject';
 import warning from 'fbjs/lib/warning';
 
 function _typeof(obj) {
+  "@babel/helpers - typeof";
+
   if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") {
     _typeof = function (obj) {
       return typeof obj;
@@ -82,13 +84,13 @@ function _objectSpread2(target) {
     var source = arguments[i] != null ? arguments[i] : {};
 
     if (i % 2) {
-      ownKeys(source, true).forEach(function (key) {
+      ownKeys(Object(source), true).forEach(function (key) {
         _defineProperty(target, key, source[key]);
       });
     } else if (Object.getOwnPropertyDescriptors) {
       Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
     } else {
-      ownKeys(source).forEach(function (key) {
+      ownKeys(Object(source)).forEach(function (key) {
         Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key));
       });
     }
@@ -99,9 +101,7 @@ function _objectSpread2(target) {
 
 var fetchQuery = __internal.fetchQuery;
 
-var VueRelayQueryFetcher =
-/*#__PURE__*/
-function () {
+var VueRelayQueryFetcher = /*#__PURE__*/function () {
   function VueRelayQueryFetcher(args) {
     _classCallCheck(this, VueRelayQueryFetcher);
 

@@ -1,5 +1,5 @@
 import babel from 'rollup-plugin-babel'
-import replace from 'rollup-plugin-replace'
+import replace from '@rollup/plugin-replace'
 
 const version = process.env.VERSION || require('./package.json').version
 const banner =

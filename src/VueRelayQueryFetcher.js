@@ -8,7 +8,7 @@ import {
 const { fetchQuery } = __internal
 
 class VueRelayQueryFetcher {
-  constructor (args) {
+  constructor(args) {
     // this._fetchOptions
     // this._pendingRequest
     // this._rootSubscription
@@ -23,31 +23,31 @@ class VueRelayQueryFetcher {
     }
   }
 
-  getSelectionReferences () {
+  getSelectionReferences() {
     return {
       cacheSelectionReference: this._cacheSelectionReference,
       selectionReferences: this._selectionReferences
     }
   }
 
-  lookupInStore (
+  lookupInStore(
     environment,
     operation
   ) {
-    if (environment.check(operation.root)) {
+    if (environment.check(operation)) {
       this._retainCachedOperation(environment, operation)
       return environment.lookup(operation.fragment, operation)
     }
     return null
   }
 
-  execute ({
+  execute({
     environment,
     operation,
     cacheConfig,
     preservePreviousReferences = false
   }) {
-    const reference = environment.retain(operation.root)
+    const reference = environment.retain(operation)
     const fetchQueryOptions =
       cacheConfig != null
         ? {
@@ -84,7 +84,7 @@ class VueRelayQueryFetcher {
     })
   }
 
-  setOnDataChange (onDataChange) {
+  setOnDataChange(onDataChange) {
     invariant(
       this._fetchOptions,
       'VueRelayQueryFetcher: `setOnDataChange` should have been called after having called `fetch`'
@@ -117,7 +117,7 @@ class VueRelayQueryFetcher {
    * `onDataChange` will be called with the first result (**if it wasn't returned synchronously**),
    * and then subsequently whenever the data changes.
    */
-  fetch (fetchOptions) {
+  fetch(fetchOptions) {
     const { cacheConfig, environment, operation, onDataChange } = fetchOptions
     let fetchHasReturned = false
     let error
@@ -183,7 +183,7 @@ class VueRelayQueryFetcher {
       })
 
     this._pendingRequest = {
-      dispose () {
+      dispose() {
         request.unsubscribe()
       }
     }
@@ -197,7 +197,7 @@ class VueRelayQueryFetcher {
     return this._snapshot
   }
 
-  retry () {
+  retry() {
     invariant(
       this._fetchOptions,
       'VueRelayQueryFetcher: `retry` should be called after having called `fetch`'
@@ -210,12 +210,12 @@ class VueRelayQueryFetcher {
     })
   }
 
-  dispose () {
+  dispose() {
     this.disposeRequest()
     this.disposeSelectionReferences()
   }
 
-  disposeRequest () {
+  disposeRequest() {
     this._error = null
     this._snapshot = null
 
@@ -229,26 +229,26 @@ class VueRelayQueryFetcher {
     }
   }
 
-  _retainCachedOperation (
+  _retainCachedOperation(
     environment,
     operation
   ) {
     this._disposeCacheSelectionReference()
-    this._cacheSelectionReference = environment.retain(operation.root)
+    this._cacheSelectionReference = environment.retain(operation)
   }
 
-  _disposeCacheSelectionReference () {
+  _disposeCacheSelectionReference() {
     this._cacheSelectionReference && this._cacheSelectionReference.dispose()
     this._cacheSelectionReference = null
   }
 
-  disposeSelectionReferences () {
+  disposeSelectionReferences() {
     this._disposeCacheSelectionReference()
     this._selectionReferences.forEach(r => r.dispose())
     this._selectionReferences = []
   }
 
-  _onQueryDataAvailable ({ notifyFirstResult }) {
+  _onQueryDataAvailable({ notifyFirstResult }) {
     invariant(
       this._fetchOptions,
       'VueRelayQueryFetcher: `_onQueryDataAvailable` should have been called after having called `fetch`'

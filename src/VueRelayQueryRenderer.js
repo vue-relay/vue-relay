@@ -27,7 +27,7 @@ const VueRelayQueryRenderer = {
     },
     dataFrom: {
       type: String,
-      validator (val) {
+      validator(val) {
         return Object.values(DataFromEnum).indexOf(val) !== -1
       }
     },
@@ -41,7 +41,7 @@ const VueRelayQueryRenderer = {
       default: () => ({})
     }
   },
-  data () {
+  data() {
     // Callbacks are attached to the current instance and shared with static
     // lifecyles by bundling with state. This is okay to do because the
     // callbacks don't change in reaction to props. However we should not
@@ -84,10 +84,10 @@ const VueRelayQueryRenderer = {
     return {}
   },
   methods: {
-    applyDerivedStateFromProps () {
+    applyDerivedStateFromProps() {
       this.setState(this.getDerivedStateFromProps(this.$props, this.state))
     },
-    setState (partialState) {
+    setState(partialState) {
       if (typeof partialState === 'function') {
         partialState = partialState({ ...this.state })
       }
@@ -106,7 +106,7 @@ const VueRelayQueryRenderer = {
         }
       }
     },
-    getDerivedStateFromProps (nextProps, prevState) {
+    getDerivedStateFromProps(nextProps, prevState) {
       if (
         prevState.prevQuery !== nextProps.query ||
         prevState.prevPropsEnvironment !== nextProps.environment ||
@@ -146,7 +146,7 @@ const VueRelayQueryRenderer = {
 
       return null
     },
-    shouldComponentUpdate (_, nextState) {
+    shouldComponentUpdate(_, nextState) {
       return (
         nextState.renderProps !== this.state.renderProps
       )
@@ -160,7 +160,7 @@ const VueRelayQueryRenderer = {
       deep: true
     }
   },
-  render (h) {
+  render(h) {
     const { renderProps, relayContext } = this.state
     // Note that the root fragment results in `renderProps.props` is already
     // frozen by the store; this call is to freeze the renderProps object and
@@ -179,7 +179,7 @@ const VueRelayQueryRenderer = {
       }
     }, this.$scopedSlots.default(renderProps))
   },
-  mounted () {
+  mounted() {
     const { retryCallbacks, queryFetcher, requestCacheKey } = this.state
     if (requestCacheKey) {
       delete requestCache[requestCacheKey]
@@ -231,7 +231,7 @@ const VueRelayQueryRenderer = {
       queryFetcher.setOnDataChange(retryCallbacks.handleDataChange)
     }
   },
-  updated () {
+  updated() {
     // We don't need to cache the request after the component commits
     const { requestCacheKey } = this.state
     if (requestCacheKey) {
@@ -240,10 +240,10 @@ const VueRelayQueryRenderer = {
       delete this.state.requestCacheKey
     }
   },
-  beforeDestroy () {
+  beforeDestroy() {
     this.state.queryFetcher.dispose()
   },
-  provide () {
+  provide() {
     return {
       [VUE_RELAY_PROPS]: (this[VUE_RELAY_PROPS] = Vue.observable({
         __relayContext: Object.freeze({
@@ -254,7 +254,7 @@ const VueRelayQueryRenderer = {
   }
 }
 
-function getContext (
+function getContext(
   environment,
   variables
 ) {
@@ -263,7 +263,7 @@ function getContext (
     variables
   }
 }
-function getLoadingRenderProps () {
+function getLoadingRenderProps() {
   return {
     error: null,
     props: null, // `props: null` indicates that the data is being fetched (i.e. loading)
@@ -271,7 +271,7 @@ function getLoadingRenderProps () {
   }
 }
 
-function getEmptyRenderProps () {
+function getEmptyRenderProps() {
   return {
     error: null,
     props: {}, // `props: {}` indicates no data available
@@ -279,7 +279,7 @@ function getEmptyRenderProps () {
   }
 }
 
-function getRenderProps (
+function getRenderProps(
   error,
   snapshot,
   queryFetcher,
@@ -307,7 +307,7 @@ function getRenderProps (
   }
 }
 
-function getRequestCacheKey (
+function getRequestCacheKey(
   request,
   variables
 ) {
@@ -318,7 +318,7 @@ function getRequestCacheKey (
   })
 }
 
-function fetchQueryAndComputeStateFromProps (
+function fetchQueryAndComputeStateFromProps(
   props,
   queryFetcher,
   retryCallbacks,
@@ -405,6 +405,7 @@ function fetchQueryAndComputeStateFromProps (
         requestCacheKey
       }
     } catch (error) {
+      console.error('QueryRenderer:', error)
       return {
         error,
         relayContext,

@@ -1,5 +1,5 @@
 /**
- * vue-relay v5.0.2
+ * vue-relay v5.1.0
  * (c) 2020 なつき
  * @license BSD-2-Clause
  */
@@ -134,7 +134,7 @@ var VueRelayQueryFetcher = /*#__PURE__*/function () {
   }, {
     key: "lookupInStore",
     value: function lookupInStore(environment, operation) {
-      if (environment.check(operation.root)) {
+      if (environment.check(operation)) {
         this._retainCachedOperation(environment, operation);
 
         return environment.lookup(operation.fragment, operation);
@@ -152,7 +152,7 @@ var VueRelayQueryFetcher = /*#__PURE__*/function () {
           cacheConfig = _ref.cacheConfig,
           _ref$preservePrevious = _ref.preservePreviousReferences,
           preservePreviousReferences = _ref$preservePrevious === void 0 ? false : _ref$preservePrevious;
-      var reference = environment.retain(operation.root);
+      var reference = environment.retain(operation);
       var fetchQueryOptions = cacheConfig != null ? {
         networkCacheConfig: cacheConfig
       } : {};
@@ -348,7 +348,7 @@ var VueRelayQueryFetcher = /*#__PURE__*/function () {
     value: function _retainCachedOperation(environment, operation) {
       this._disposeCacheSelectionReference();
 
-      this._cacheSelectionReference = environment.retain(operation.root);
+      this._cacheSelectionReference = environment.retain(operation);
     }
   }, {
     key: "_disposeCacheSelectionReference",
@@ -451,7 +451,7 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
     props: props,
     methods: {
       applyDerivedStateFromProps: function applyDerivedStateFromProps() {
-        this.setState(this.getDerivedStateFromProps(_objectSpread2({}, this.$props, {}, this.props), this.state));
+        this.setState(this.getDerivedStateFromProps(_objectSpread2(_objectSpread2({}, this.$props), this.props), this.state));
       },
       setState: function setState(partialState, callback) {
         var _this = this;
@@ -463,9 +463,9 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
         if (partialState != null) {
           var prevState = this.state;
 
-          var nextState = _objectSpread2({}, prevState, {}, partialState);
+          var nextState = _objectSpread2(_objectSpread2({}, prevState), partialState);
 
-          var prevProps = _objectSpread2({}, this.$props, {}, this.props);
+          var prevProps = _objectSpread2(_objectSpread2({}, this.$props), this.props);
 
           var forceUpdate = this.shouldComponentUpdate(prevProps, nextState);
           this.state = nextState;
@@ -495,7 +495,7 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
 
       if (component != null) {
         return h(component, {
-          props: _objectSpread2({}, this.$attrs, {}, this.state.data, {
+          props: _objectSpread2(_objectSpread2(_objectSpread2({}, this.$attrs), this.state.data), {}, {
             relay: this.state.relayProp
           })
         });
@@ -505,7 +505,7 @@ var buildVueRelayContainer = function buildVueRelayContainer(component, fragment
         props: {
           include: []
         }
-      }, this.$scopedSlots["default"](_objectSpread2({}, this.state.data, {
+      }, this.$scopedSlots["default"](_objectSpread2(_objectSpread2({}, this.state.data), {}, {
         relay: this.state.relayProp
       })));
     },
@@ -595,7 +595,7 @@ var VueRelayQueryRenderer = {
       }
 
       if (partialState != null) {
-        var nextState = _objectSpread2({}, this.state, {}, partialState);
+        var nextState = _objectSpread2(_objectSpread2({}, this.state), partialState);
 
         var forceUpdate = this.shouldComponentUpdate(this.$props, nextState);
         this.state = nextState;
@@ -865,6 +865,7 @@ function fetchQueryAndComputeStateFromProps(props, queryFetcher, retryCallbacks,
         requestCacheKey: requestCacheKey
       };
     } catch (error) {
+      console.error('QueryRenderer:', error);
       return {
         error: error,
         relayContext: relayContext,
@@ -936,7 +937,7 @@ var createContainerWithFragments = function createContainerWithFragments(compone
       var resolver = relayRuntime.createFragmentSpecResolver(relayContext, containerName, fragments, this.$props);
       this.state = {
         data: resolver.resolve(),
-        prevProps: _objectSpread2({}, this.$props, {}, this.props),
+        prevProps: _objectSpread2(_objectSpread2({}, this.$props), this.props),
         prevPropsContext: relayContext,
         relayProp: getRelayProp(relayContext.environment),
         resolver: resolver
@@ -1109,7 +1110,7 @@ function createGetFragmentVariables(metadata) {
   var countVariable = metadata.count;
   invariant(countVariable, 'VueRelayPaginationContainer: Unable to synthesize a ' + 'getFragmentVariables function.');
   return function (prevVars, totalCount) {
-    return _objectSpread2({}, prevVars, _defineProperty({}, countVariable, totalCount));
+    return _objectSpread2(_objectSpread2({}, prevVars), {}, _defineProperty({}, countVariable, totalCount));
   };
 }
 
@@ -1130,7 +1131,7 @@ function findConnectionMetadata(fragments) {
     if (connectionMetadata) {
       invariant(connectionMetadata.length === 1, 'VueRelayPaginationContainer: Only a single @connection is ' + 'supported, `%s` has %s.', fragmentName, connectionMetadata.length);
       invariant(!foundConnectionMetadata, 'VueRelayPaginationContainer: Only a single fragment with ' + '@connection is supported.');
-      foundConnectionMetadata = _objectSpread2({}, connectionMetadata[0], {
+      foundConnectionMetadata = _objectSpread2(_objectSpread2({}, connectionMetadata[0]), {}, {
         fragmentName: fragmentName
       });
     }
@@ -1168,7 +1169,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
       this._resolver = relayRuntime.createFragmentSpecResolver(relayContext, containerName, fragments, this.$props, this._handleFragmentDataUpdate);
       this.state = {
         data: this._resolver.resolve(),
-        prevProps: _objectSpread2({}, this.$props, {}, this.props),
+        prevProps: _objectSpread2(_objectSpread2({}, this.$props), this.props),
         prevPropsContext: relayContext,
         contextForChildren: relayContext,
         relayProp: this._buildRelayProp(relayContext)
@@ -1262,7 +1263,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
         // Extract connection data and verify there are more edges to fetch
         var restProps = this.$props;
 
-        var props = _objectSpread2({}, restProps, {}, this.state.data);
+        var props = _objectSpread2(_objectSpread2({}, restProps), this.state.data);
 
         var connectionData = getConnectionFromProps(props);
 
@@ -1397,7 +1398,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
 
         var restProps = this.$props;
 
-        var props = _objectSpread2({}, restProps, {}, this.state.data);
+        var props = _objectSpread2(_objectSpread2({}, restProps), this.state.data);
 
         var rootVariables;
         var fragmentVariables;
@@ -1410,19 +1411,19 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
         forEachObject(fragments, function (__, key) {
           var fragmentOwner = fragmentOwners[key];
           var fragmentOwnerVariables = Array.isArray(fragmentOwner) ? fragmentOwner[0] && fragmentOwner[0].variables ? fragmentOwner[0].variables : {} : fragmentOwner && fragmentOwner.variables ? fragmentOwner.variables : {};
-          rootVariables = _objectSpread2({}, rootVariables, {}, fragmentOwnerVariables);
+          rootVariables = _objectSpread2(_objectSpread2({}, rootVariables), fragmentOwnerVariables);
         });
         fragmentVariables = relayRuntime.getVariablesFromObject( // NOTE: We pass empty operationVariables because we want to prefer
         // the variables from the fragment owner
         {}, fragments, restProps, fragmentOwners);
-        fragmentVariables = _objectSpread2({}, rootVariables, {}, fragmentVariables, {}, this._refetchVariables);
+        fragmentVariables = _objectSpread2(_objectSpread2(_objectSpread2({}, rootVariables), fragmentVariables), this._refetchVariables);
         var fetchVariables = connectionConfig.getVariables(props, {
           count: paginatingVariables.count,
           cursor: paginatingVariables.cursor
         }, fragmentVariables);
         invariant(_typeof(fetchVariables) === 'object' && fetchVariables !== null, 'VueRelayPaginationContainer: Expected `getVariables()` to ' + 'return an object, got `%s` in `%s`.', fetchVariables, componentName);
-        fetchVariables = _objectSpread2({}, fetchVariables, {}, this._refetchVariables);
-        fragmentVariables = _objectSpread2({}, fetchVariables, {}, fragmentVariables);
+        fetchVariables = _objectSpread2(_objectSpread2({}, fetchVariables), this._refetchVariables);
+        fragmentVariables = _objectSpread2(_objectSpread2({}, fetchVariables), fragmentVariables);
         var cacheConfig = options ? {
           force: !!options.force
         } : undefined;
@@ -1437,7 +1438,7 @@ var createContainerWithFragments$1 = function createContainerWithFragments(compo
         this._hasFetched = true;
 
         var onNext = function onNext(_, complete) {
-          var contextVariables = _objectSpread2({}, _this.props.__relayContext.variables, {}, fragmentVariables);
+          var contextVariables = _objectSpread2(_objectSpread2({}, _this.props.__relayContext.variables), fragmentVariables);
 
           var prevData = _this._resolver.resolve();
 
@@ -1560,7 +1561,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(compo
       this.state = {
         data: resolver.resolve(),
         localVariables: null,
-        prevProps: _objectSpread2({}, this.$props, {}, this.props),
+        prevProps: _objectSpread2(_objectSpread2({}, this.$props), this.props),
         prevPropsContext: relayContext,
         contextForChildren: relayContext,
         relayProp: getRelayProp$1(relayContext.environment, this._refetch),
@@ -1708,8 +1709,8 @@ var createContainerWithFragments$2 = function createContainerWithFragments(compo
             rootVariables = _assertRelayContext.variables;
 
         var fetchVariables = typeof refetchVariables === 'function' ? refetchVariables(this._getFragmentVariables()) : refetchVariables;
-        fetchVariables = _objectSpread2({}, rootVariables, {}, fetchVariables);
-        var fragmentVariables = renderVariables ? _objectSpread2({}, fetchVariables, {}, renderVariables) : fetchVariables;
+        fetchVariables = _objectSpread2(_objectSpread2({}, rootVariables), fetchVariables);
+        var fragmentVariables = renderVariables ? _objectSpread2(_objectSpread2({}, fetchVariables), renderVariables) : fetchVariables;
         var cacheConfig = options ? {
           force: !!options.force
         } : undefined;
@@ -1781,7 +1782,7 @@ var createContainerWithFragments$2 = function createContainerWithFragments(compo
           if (_this._refetchSubscription === refetchSubscription) {
             _this._refetchSubscription = null;
           }
-        }).subscribe(_objectSpread2({}, observer, {
+        }).subscribe(_objectSpread2(_objectSpread2({}, observer), {}, {
           start: function start(subscription) {
             _this._refetchSubscription = refetchSubscription = subscription;
             observer.start && observer.start(subscription);

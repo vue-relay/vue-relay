@@ -1,6 +1,6 @@
 {
   "name": "vue-relay",
-  "version": "5.0.2",
+  "version": "5.1.0",
   "description": "A framework for building GraphQL-driven Vue.js applications.",
   "keywords": [
     "vue",
@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "fbjs": "^1.0.0",
-    "relay-runtime": "^5.0.0"
+    "relay-runtime": "^8.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.9.0",

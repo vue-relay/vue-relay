@@ -69,8 +69,8 @@ const VueRelayQueryRenderer = {
 
     this.state = {
       prevPropsEnvironment: this.environment,
-      prevPropsVariables: this.variables,
-      prevQuery: this.query,
+      prevPropsVariables: { ...this.variables },
+      prevQuery: { ...this.query },
       queryFetcher,
       retryCallbacks,
       ...fetchQueryAndComputeStateFromProps(
@@ -130,9 +130,9 @@ const VueRelayQueryRenderer = {
           queryFetcher = new VueRelayQueryFetcher(prevSelectionReferences)
         }
         return {
-          prevQuery: nextProps.query,
+          prevQuery: { ...nextProps.query },
           prevPropsEnvironment: nextProps.environment,
-          prevPropsVariables: nextProps.variables,
+          prevPropsVariables: { ...nextProps.variables },
           queryFetcher: queryFetcher,
           ...fetchQueryAndComputeStateFromProps(
             nextProps,
